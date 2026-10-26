@@ -16,6 +16,7 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `refresh-ios` | Offizielle iTunes Lookup API, 200 Apps pro Request | Metadaten + tägliche Bewertungszahl pro Store |
 | `refresh-android` | Play-Detailseite (laut robots.txt erlaubt) | Metadaten + **exakte Installationszahl** täglich |
 | `plan-tiers` | eigene Daten | Wie oft jede App aktualisiert wird (T0 täglich … T3 selten) |
+| `trends` | eigene Messwerte | Wachstum über 7 und 30 Tage: iOS Bewertungen pro Store, Android exakte Installationen |
 
 **Android hat keine Charts:** Die Ranglisten lädt Google Play nur über die gesperrte interne Schnittstelle
 (`batchexecute`). Dafür misst die tägliche Differenz der exakten Installationszahl Downloads direkt; das ist
@@ -30,6 +31,7 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `apps` | eine Zeile pro App und Plattform: Stammdaten, aktueller Stand, Tier, nächster Aktualisierungstermin |
 | `chart_ranks` | Rang pro Tag × Land × Gerät × Chart × Kategorie (monatlich partitioniert) |
 | `app_metrics_daily` | Bewertungen, Installationen, Preis, Version pro App × Store × Tag (monatlich partitioniert) |
+| `app_trends` | Zuwachs pro App über 7 und 30 Tage, täglich neu berechnet (`0002_trends.sql`) |
 | `sitemap_files` | Fortschritt der Discovery |
 
 ## Einrichtung
@@ -62,6 +64,7 @@ $PY -m appcrawl plan-tiers
 $PY -m appcrawl refresh-ios                        # fällige Apps im US-Store
 $PY -m appcrawl refresh-ios --missing --country de # nicht gefundene Apps im Chart-Store bzw. in DE
 $PY -m appcrawl refresh-android --limit 20000
+$PY -m appcrawl trends                             # Wachstum 7/30 Tage, braucht 2 Messtage
 
 # Überblick, Export, Tests
 $PY -m appcrawl stats
@@ -103,7 +106,7 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 |---|---|---|
 | 00:40 | `discover ios --only-new --rescan` (sonntags voller Rescan) | Minuten (voll ~30 min) |
 | 01:05 | `charts` + `plan-tiers` | ~30 min für 40 Märkte |
-| 02:15 | `refresh-ios`, danach `--missing` | ~8–9 h für den ganzen Katalog |
+| 02:15 | `refresh-ios`, danach `--missing`, dann `trends` | ~8–9 h für den ganzen Katalog, `trends` wenige Minuten |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
 | So 03:00 | `discover android` | ~24 h bei 1/s |
 

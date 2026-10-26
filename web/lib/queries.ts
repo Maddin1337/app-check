@@ -189,3 +189,121 @@ export async function chartList(country: string, chart: string, genre: string, d
       AND c.country = ${country} AND c.chart = ${chart} AND c.genre_id = ${genre} AND c.device = ${device}
     ORDER BY c.rank`;
 }
+
+export type RisingFilters = {
+  view: "growth" | "charts";
+  platform: "ios" | "android";
+  window: 7 | 30;
+  sort: "absolute" | "relative";
+  category: string;
+  page: number;
+  // chart movers
+  country: string;
+  chart: string;
+  genre: string;
+  device: string;
+};
+
+export function parseRisingFilters(params: Params): RisingFilters {
+  const pick = <T extends string>(value: string, allowed: readonly T[], fallback: T): T =>
+    (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+  return {
+    view: pick(one(params.view), ["growth", "charts"] as const, "growth"),
+    platform: pick(one(params.platform), ["ios", "android"] as const, "ios"),
+    window: one(params.window) === "7" ? 7 : 30,
+    sort: pick(one(params.sort), ["absolute", "relative"] as const, "absolute"),
+    category: one(params.category).slice(0, 100),
+    page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
+    country: one(params.country).slice(0, 2).toLowerCase() || "de",
+    chart: pick(one(params.chart), ["top-free", "top-paid", "top-grossing"] as const, "top-free"),
+    genre: one(params.genre).slice(0, 10) || "36",
+    device: pick(one(params.device), ["iphone", "ipad", "mac"] as const, "iphone"),
+  };
+}
+
+/** Smallest start value for relative growth, so 2 → 4 ratings does not top the list with +100 %. */
+export const RELATIVE_MIN_BASE = { ios: 100, android: 1000 } as const;
+
+export type TrendRow = AppRow & {
+  metric: "ratings" | "installs";
+  country: string;
+  start_day: Date;
+  end_day: Date;
+  start_value: number;
+  end_value: number;
+  delta: number;
+  per_day: number;
+  growth: number | null;
+  points: number;
+};
+
+export async function risingApps(f: RisingFilters) {
+  const filter = sql`
+    WHERE t.window_days = ${f.window} AND t.platform = ${f.platform} AND t.delta > 0
+    ${f.category ? sql`AND a.category = ${f.category}` : sql``}
+    ${f.sort === "relative" ? sql`AND t.start_value >= ${RELATIVE_MIN_BASE[f.platform]}` : sql``}`;
+  const rows = await sql<TrendRow[]>`
+    SELECT a.id, a.platform, a.store_id, a.name, a.slug, a.developer_name, a.category, a.icon_url, a.price, a.currency,
+           a.rating_avg, a.rating_count, a.installs_exact, a.released_at, a.store_updated_at, a.status,
+           NULL::int AS best_rank, NULL::int AS chart_entries,
+           t.metric, t.country, t.start_day, t.end_day, t.start_value, t.end_value, t.delta, t.per_day, t.growth, t.points
+    FROM app_trends t JOIN apps a ON a.id = t.app_id
+    ${filter}
+    ORDER BY ${f.sort === "relative" ? sql`t.growth DESC NULLS LAST` : sql`t.per_day DESC`}, t.app_id
+    LIMIT ${PAGE_SIZE} OFFSET ${(f.page - 1) * PAGE_SIZE}`;
+  const [{ total, computed }] = await sql<{ total: number; computed: Date | null }[]>`
+    SELECT COUNT(*)::int AS total, MAX(t.computed_at) AS computed
+    FROM app_trends t JOIN apps a ON a.id = t.app_id ${filter}`;
+  return { rows, total, computed };
+}
+
+export async function trendCategories(platform: string, window: number) {
+  return sql<{ category: string; apps: number }[]>`
+    SELECT a.category, COUNT(*)::int AS apps FROM app_trends t JOIN apps a ON a.id = t.app_id
+    WHERE t.window_days = ${window} AND t.platform = ${platform} AND t.delta > 0 AND a.category IS NOT NULL
+    GROUP BY a.category ORDER BY apps DESC LIMIT 80`;
+}
+
+/** Daily values behind each trend row, for the sparklines: app_id -> values in day order. */
+export async function trendSeries(rows: TrendRow[]) {
+  if (rows.length === 0) return new Map<number, number[]>();
+  const series = await sql<{ app_id: number; value: number }[]>`
+    SELECT m.app_id, CASE WHEN r.metric = 'installs' THEN m.installs_exact ELSE m.rating_count END::float8 AS value
+    FROM unnest(${rows.map((r) => r.id)}::bigint[], ${rows.map((r) => r.country)}::text[],
+                ${rows.map((r) => r.metric)}::text[],
+                ${rows.map((r) => r.start_day.toISOString().slice(0, 10))}::date[]) AS r(app_id, country, metric, start_day)
+    JOIN app_metrics_daily m ON m.app_id = r.app_id AND m.country = r.country AND m.day >= r.start_day
+    WHERE CASE WHEN r.metric = 'installs' THEN m.installs_exact ELSE m.rating_count END IS NOT NULL
+    ORDER BY m.app_id, m.day`;
+  const byApp = new Map<number, number[]>();
+  for (const { app_id, value } of series) {
+    const id = Number(app_id);
+    byApp.set(id, [...(byApp.get(id) ?? []), value]);
+  }
+  return byApp;
+}
+
+export type ChartMoverRow = AppRow & { rank: number; before_rank: number | null };
+
+/** Rank changes in one chart between the latest day and the latest day at least `days` earlier. */
+export async function chartMovers(f: RisingFilters, days: number) {
+  const [range] = await sql<{ latest: Date | null; before: Date | null }[]>`
+    WITH l AS (SELECT MAX(captured_on) AS latest FROM chart_ranks WHERE country = ${f.country})
+    SELECT l.latest,
+           (SELECT MAX(captured_on) FROM chart_ranks WHERE country = ${f.country} AND captured_on <= l.latest - ${days}::int) AS before
+    FROM l`;
+  if (!range?.latest || !range.before) return { rows: [] as ChartMoverRow[], ...range };
+  const rows = await sql<ChartMoverRow[]>`
+    SELECT c.rank, p.rank AS before_rank, a.id, a.platform, a.store_id, a.name, a.slug, a.developer_name, a.category,
+           a.icon_url, a.price, a.currency, a.rating_avg, a.rating_count, a.installs_exact, a.released_at,
+           a.store_updated_at, a.status, NULL::int AS best_rank, NULL::int AS chart_entries
+    FROM chart_ranks c
+    JOIN apps a ON a.id = c.app_id
+    LEFT JOIN chart_ranks p ON p.captured_on = ${range.before} AND p.platform = c.platform AND p.country = c.country
+      AND p.device = c.device AND p.chart = c.chart AND p.genre_id = c.genre_id AND p.app_id = c.app_id
+    WHERE c.captured_on = ${range.latest} AND c.country = ${f.country} AND c.chart = ${f.chart}
+      AND c.genre_id = ${f.genre} AND c.device = ${f.device}
+    ORDER BY COALESCE(p.rank, 201) - c.rank DESC, c.rank
+    LIMIT ${PAGE_SIZE}`;
+  return { rows, ...range };
+}

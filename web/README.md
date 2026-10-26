@@ -8,6 +8,7 @@ Arbeitstitel „app-check“, eigenes Design (Iris-Violett, Geist), bewusst ande
 | `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie, Veröffentlichung, Bewertungen, Preis, „nur in Charts“, Sortierung nach Bewertungen, bestem Chart-Platz, Neuheit. Filter stehen in der URL und sind teilbar |
 | `/app/[platform]/[storeId]` | App-Detail: Kennzahlen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
 | `/charts` | Rankings pro Land, Chart, Kategorie und Gerät |
+| `/rising` | Aufsteiger: Zuwachs über 7/30 Tage (iOS Bewertungen, Android Installationen) mit Sparkline, absolut oder in %; dazu Chart-Aufsteiger gegenüber vor 7 Tagen. Liest `app_trends` (Crawler-Job `trends`) |
 
 ## Starten
 

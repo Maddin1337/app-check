@@ -11,6 +11,7 @@ from appcrawl.charts import parse_chart_page, store_charts
 from appcrawl.import_csv import import_csv
 from appcrawl.refresh_ios import store_batch
 from appcrawl.tiers import plan_tiers
+from appcrawl.trends import compute_trends
 
 from test_parsing import CHART_PAGE
 
@@ -24,7 +25,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -128,6 +129,49 @@ class DatabaseFlow(unittest.TestCase):
         self.assertEqual(self.scalar("SELECT rating_count FROM apps WHERE store_id = '2'"), 120)
         self.assertEqual(self.scalar("SELECT languages FROM apps WHERE store_id = '2'"), ["EN"])
         self.assertEqual(self.scalar("SELECT status FROM apps WHERE store_id = '2'"), "active")
+
+    def test_trends(self):
+        from datetime import date, timedelta
+
+        today = date.today()
+        db.ensure_month_partition(self.connection, "app_metrics_daily", today)
+        db.ensure_month_partition(self.connection, "app_metrics_daily", today - timedelta(days=40))
+        db.upsert_app_keys(self.connection, "ios", "sitemap:app", {"1": (None, None), "2": (None, None)})
+        db.upsert_app_keys(self.connection, "android", "sitemap:play", {"com.a": (None, None)})
+        ids = {store_id: id_ for store_id, id_ in self.connection.execute("SELECT store_id, id FROM apps")}
+        rows = [
+            # iOS app 1: US series with three points, a single DE point that must not win
+            (today - timedelta(days=20), ids["1"], "us", 1000, None),
+            (today - timedelta(days=5), ids["1"], "us", 1300, None),
+            (today, ids["1"], "us", 1400, None),
+            (today, ids["1"], "de", 50000, None),
+            # iOS app 2: only one measurement, no trend
+            (today, ids["2"], "us", 10, None),
+            # Android: installs, the point outside the 30-day window is ignored
+            (today - timedelta(days=35), ids["com.a"], "ww", None, 1),
+            (today - timedelta(days=10), ids["com.a"], "ww", None, 0),
+            (today, ids["com.a"], "ww", None, 5000),
+        ]
+        self.connection.cursor().executemany(
+            """INSERT INTO app_metrics_daily (day, app_id, country, rating_count, installs_exact, fetched_at)
+               VALUES (%s, %s, %s, %s, %s, now())""", rows)
+        self.connection.commit()
+
+        self.assertEqual(compute_trends(self.connection), {"android 30d": 1, "ios 7d": 1, "ios 30d": 1})
+        ios = self.connection.execute(
+            "SELECT country, start_value, end_value, delta, per_day, growth, points FROM app_trends "
+            "WHERE app_id = %s AND window_days = 30", (ids["1"],)).fetchone()
+        self.assertEqual(ios[:4], ("us", 1000, 1400, 400))
+        self.assertAlmostEqual(ios[4], 20.0)
+        self.assertAlmostEqual(ios[5], 0.4)
+        self.assertEqual(ios[6], 3)
+        self.assertEqual(self.scalar("SELECT delta FROM app_trends WHERE app_id = %s AND window_days = 7", ids["1"]), 100)
+        android = self.connection.execute(
+            "SELECT metric, start_value, delta, growth FROM app_trends WHERE app_id = %s", (ids["com.a"],)).fetchone()
+        self.assertEqual(android, ("installs", 0, 5000, None))
+        # Recomputing replaces the rows instead of adding to them.
+        compute_trends(self.connection)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_trends"), 3)
 
 
 if __name__ == "__main__":

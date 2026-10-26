@@ -10,8 +10,9 @@ LOG=/var/log/appcrawl
 # Charts first: the time series must not miss a day. ~30 min for 40 storefronts.
 5 1 * * *   cd $APP && flock -n /tmp/appcrawl-charts.lock $PY -m appcrawl charts >> $LOG/charts.log 2>&1 && $PY -m appcrawl plan-tiers >> $LOG/tiers.log 2>&1
 
-# iOS: the whole catalog every day via Lookup (~8–9 h at 20 requests/min), then apps missing in the US store.
-15 2 * * *  cd $APP && flock -n /tmp/appcrawl-ios.lock sh -c "$PY -m appcrawl refresh-ios && $PY -m appcrawl refresh-ios --missing --country de" >> $LOG/refresh-ios.log 2>&1
+# iOS: the whole catalog every day via Lookup (~8–9 h at 20 requests/min), then apps missing in the US store,
+# then 7- and 30-day growth for the rising list (a few minutes; Android's metrics of the day are included as far as done).
+15 2 * * *  cd $APP && flock -n /tmp/appcrawl-ios.lock sh -c "$PY -m appcrawl refresh-ios && $PY -m appcrawl refresh-ios --missing --country de; $PY -m appcrawl trends" >> $LOG/refresh-ios.log 2>&1
 
 # Android: work through due detail pages around the clock; each run stops when nothing is due.
 */30 * * * * cd $APP && flock -n /tmp/appcrawl-android.lock $PY -m appcrawl refresh-android --limit 20000 >> $LOG/refresh-android.log 2>&1

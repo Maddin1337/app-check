@@ -25,3 +25,6 @@ export function displayName(name: string | null, slug: string | null, storeId: s
   if (slug) return slug.replace(/-/g, " ");
   return storeId;
 }
+
+const percent = new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" });
+export const formatPercent = (value: number | null) => (value == null ? "–" : percent.format(value));

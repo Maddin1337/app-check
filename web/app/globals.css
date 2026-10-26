@@ -14,6 +14,7 @@
   --rank: #b45309;
   --rank-soft: #fef3c7;
   --good: #15803d;
+  --bad: #b91c1c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +31,7 @@
     --rank: #fbbf24;
     --rank-soft: #3a2a07;
     --good: #4ade80;
+    --bad: #f87171;
   }
 }
 
@@ -46,6 +48,7 @@
   --color-rank: var(--rank);
   --color-rank-soft: var(--rank-soft);
   --color-good: var(--good);
+  --color-bad: var(--bad);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

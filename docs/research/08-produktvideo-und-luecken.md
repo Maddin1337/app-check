@@ -112,7 +112,7 @@ Abgleich der Video-Funktionen mit dem Prototyp in `web/` (Stand dieses Branches:
 
 ### 4.1 Empfohlene Reihenfolge der nächsten Pakete
 
-1. **Rising und Trending aus eigenen Zeitreihen.** Geht sofort mit vorhandenen Daten: Δ Bewertungen pro Tag,
+1. **Rising und Trending aus eigenen Zeitreihen.** *Umgesetzt am 26.10.2026: Crawler-Job `trends` + Tabelle `app_trends`, Seite `/rising` mit Wachstum und Chart-Aufsteigern.* Geht sofort mit vorhandenen Daten: Δ Bewertungen pro Tag,
    Δ `realInstalls` (Android, sobald der Vollpass läuft) und Rangsprünge. Braucht eine täglich berechnete Tabelle
    statt Aggregation pro Request (bekannte Grenze in `web/README.md`).
 2. **Explorer erweitern:** Ausschluss-Filter (Genre, Sprache), Mindest-Rating, IAP ja/nein, Wachstumsspalte mit

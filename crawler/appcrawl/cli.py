@@ -11,6 +11,7 @@ from .import_csv import import_csv
 from .refresh_android import refresh_android
 from .refresh_ios import refresh_ios
 from .tiers import plan_tiers
+from .trends import compute_trends
 
 
 def stats(connection) -> None:
@@ -113,6 +114,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--limit", type=int, help="at most N apps")
 
     sub.add_parser("plan-tiers", help="recompute refresh tiers from charts, size and age")
+    sub.add_parser("trends", help="recompute 7- and 30-day growth from the daily metrics")
     sub.add_parser("stats", help="progress, tiers and time series coverage")
 
     p = sub.add_parser("export", help="gzip CSV of apps (per platform), charts or metrics")
@@ -141,6 +143,8 @@ def main(argv: list[str] | None = None) -> None:
             refresh_android(connection, args.country, args.rate, args.workers, args.limit)
         elif args.command == "plan-tiers":
             print(plan_tiers(connection), file=sys.stderr)
+        elif args.command == "trends":
+            print(compute_trends(connection), file=sys.stderr)
         elif args.command == "stats":
             stats(connection)
         elif args.command == "export":

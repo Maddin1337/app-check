@@ -75,3 +75,18 @@ export function Skeleton({ rows = 8 }: { rows?: number }) {
     </div>
   );
 }
+
+/** Tiny line chart of a daily series; scaled to its own min/max, so it shows shape, not size. */
+export function Sparkline({ values, width = 96, height = 28 }: { values: number[]; width?: number; height?: number }) {
+  if (values.length < 2) return <span className="text-xs text-muted">–</span>;
+  const min = Math.min(...values);
+  const span = Math.max(...values) - min || 1;
+  const points = values
+    .map((v, i) => `${((i / (values.length - 1)) * (width - 2) + 1).toFixed(1)},${(height - 1 - ((v - min) / span) * (height - 2)).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="text-good" aria-hidden>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
