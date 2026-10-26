@@ -1214,6 +1214,35 @@ ORDER BY (app_id, country, date, model_version);
 
 ---
 
+## 14a. Umsetzung: Werkzeug `appcrawl` (Stand 26.10.2026)
+
+Der komplette Auszug ist als Werkzeug im Repo umgesetzt: [`crawler/`](../../crawler/README.md). Zwei Stufen:
+
+1. **Discovery:** alle App-IDs aus den Sitemaps beider Stores (§ 3.2, § 4.2).
+2. **Metadaten:** iOS über die iTunes Lookup API (§ 3.3), Android über die Play-Detailseite (§ 4.3).
+
+**Live gemessen (Cloud-Container, eine IP) [beobachtet]:**
+
+| Schritt | Ergebnis |
+|---|---|
+| iOS Discovery, alle 1.745 Sitemaps | Lauf aktiv, ~1 Sitemap/s, Ergebnis folgt |
+| Android Discovery, Stichprobe 150 von 86.990 Sitemaps | 6.813 Apps, 45,4 pro Datei → **~3,95 Mio. App-URLs** |
+| iOS Lookup, 2.000 Apps | 10 Requests in 33 s, 93 % im US-Store gefunden |
+| Android Detailseiten, 80 Apps | 158 s bei 0,5 Requests/s, 89 % verfügbar, exakte Installationszahl bei allen |
+
+**Neue Befunde aus der Umsetzung [beobachtet]:**
+- Die `.xml.gz`-Sitemaps beider Stores kommen **doppelt gzip-komprimiert** (Content-Encoding plus gz-Datei).
+- Die Python-Bibliothek `google-play-scraper` (§ 4.6) **deaktiviert beim Import global die
+  TLS-Zertifikatsprüfung** (`ssl._create_default_https_context = ssl._create_unverified_context`). Wir nutzen nur
+  ihren Parser und stellen die Prüfung wieder her.
+- Der Play-Sitemap-Index wuchs innerhalb eines Tages von 86.927 auf 86.990 Dateien (neues Datum im Dateinamen).
+
+**Engpass bestätigt:** Android-Detailseiten. 3,95 Mio. Seiten bei 0,5/s sind ~90 Tage auf einer IP. Für einen
+Vollpass in einer Woche braucht es ~15–20 IPs oder eine höhere, noch zu messende Rate pro IP, plus
+Priorisierung (Apps mit Signalen zuerst).
+
+---
+
 ## 15. Quellen
 
 **Selbst geprüft (Primärquellen, 25.10.2026):**
