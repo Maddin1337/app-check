@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* Own identity: iris primary, amber for ranks. Deliberately unlike AppKittie's green/Satoshi look. */
+:root {
+  --bg: #f6f6fa;
+  --surface: #ffffff;
+  --surface-2: #f0f0f6;
+  --border: #e3e3ec;
+  --text: #15151c;
+  --muted: #6a6a7e;
+  --primary: #5552d9;
+  --primary-strong: #4340c4;
+  --primary-soft: #ebebfc;
+  --rank: #b45309;
+  --rank-soft: #fef3c7;
+  --good: #15803d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d13;
+    --surface: #15151d;
+    --surface-2: #1c1c27;
+    --border: #2a2a38;
+    --text: #ececf3;
+    --muted: #9898ad;
+    --primary: #8f8cf3;
+    --primary-strong: #aaa8f7;
+    --primary-soft: #23223f;
+    --rank: #fbbf24;
+    --rank-soft: #3a2a07;
+    --good: #4ade80;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-rank: var(--rank);
+  --color-rank-soft: var(--rank-soft);
+  --color-good: var(--good);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field {
+  @apply h-9 rounded-lg border border-border bg-surface px-3 text-sm text-text outline-none focus:border-primary focus:ring-2 focus:ring-primary/20;
+}
