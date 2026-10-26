@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from appcrawl.charts import CHART_URL, parse_chart_page, parse_grossing_rss
 from appcrawl.discover import parse_apple_urlset, parse_locs, parse_play_urlset, sitemap_indexes
-from appcrawl.estimates import combine, curve, net_factor, rpd
+from appcrawl.estimates import curve, net_factor, rpd
 from appcrawl.iap import classify, parse_app_page, parse_price
 from appcrawl.refresh_android import _domain, _released
 from appcrawl.refresh_ios import app_fields
@@ -184,14 +184,6 @@ class EstimateModel(unittest.TestCase):
         self.assertLess(curve("top-paid", 1), curve("top-free", 200))
         self.assertAlmostEqual(curve("top-grossing", 1), 2_500_000)
         self.assertLess(curve("top-grossing", 100), curve("top-grossing", 10))
-
-    def test_combine_weights_the_tighter_estimate(self):
-        value, sigma = combine([(100.0, 0.5), (400.0, 1.0)])
-        self.assertTrue(100 < value < 200)  # geometric mean would be 200
-        self.assertLess(sigma, 0.5)
-        value, sigma = combine([(50.0, 0.3)])
-        self.assertAlmostEqual(value, 50.0)
-        self.assertAlmostEqual(sigma, 0.3)
 
     def test_revenue_per_download(self):
         self.assertIsNone(rpd("ios", None, 0, None, None))

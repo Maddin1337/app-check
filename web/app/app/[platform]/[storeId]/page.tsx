@@ -102,11 +102,9 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
               <p className="text-xs leading-relaxed text-muted">
                 {estimate.download_method ? `${METHOD_TEXT[estimate.download_method] ?? estimate.download_method} ` : ""}
                 {estimate.scope === "us" ? "Gilt nur für den US App Store." : "Weltweit."}{" "}
-                {estimate.revenue_method === "grossing" || estimate.revenue_method === "grossing-category"
+                {estimate.revenue_method && REVENUE_METHOD_TEXT[estimate.revenue_method]
                   ? REVENUE_METHOD_TEXT[estimate.revenue_method]
-                  : estimate.revenue_method === "combined"
-                    ? `${REVENUE_METHOD_TEXT.combined} ${estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}`
-                    : estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
+                  : estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
                 Spanne = P10 bis P90. Werbeeinnahmen sind nicht enthalten. Methodik: docs/research/04-schaetzmodelle.md.
               </p>
             </div>
@@ -222,7 +220,6 @@ const METHOD_TEXT: Record<string, string> = {
 const REVENUE_METHOD_TEXT: Record<string, string> = {
   grossing: "Umsatz aus dem Platz im US-Top-Grossing-Chart über eine Rangkurve (Startwerte, noch nicht kalibriert).",
   "grossing-category": "Umsatz aus dem Platz in einem US-Top-Grossing-Kategorie-Chart, skaliert über Apps im Gesamtchart.",
-  combined: "Umsatz kombiniert aus dem Top-Grossing-Platz und Downloads × Erlös pro Download, gewichtet nach Unsicherheit.",
 };
 
 const MONETIZATION_TEXT: Record<string, string> = {

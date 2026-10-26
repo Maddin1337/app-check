@@ -2,7 +2,6 @@
 
 import csv
 import gzip
-import math
 import os
 import tempfile
 import unittest
@@ -199,7 +198,7 @@ class DatabaseFlow(unittest.TestCase):
         ranks.append(("6017", 30, ids["100"]))  # only in the category chart
         grossing = [("36", 1, ids["1"]), ("36", 50, ids["300"])]  # app 300: revenue rank only, no download signal
         metrics += [(today - timedelta(days=10), ids["200"], "us", 0, None),  # not charted: ratings only
-                    (today, ids["200"], "us", 50, None),
+                    (today, ids["200"], "us", 50_000, None),  # fast grower without a chart place
                     (today - timedelta(days=10), ids["com.a"], "ww", None, 1000),
                     (today, ids["com.a"], "ww", None, 21000)]
         self.connection.cursor().executemany(
@@ -217,25 +216,24 @@ class DatabaseFlow(unittest.TestCase):
         compute_trends(self.connection)
         store_iap(self.connection, ids["1"], "us", Decimal(0), [("Pro", Decimal("9.99"), "USD"),
                                                                  ("Pro", Decimal("59.99"), "USD")])
+        store_iap(self.connection, ids["200"], "us", Decimal(0), [("Premium Yearly", Decimal("499.99"), "USD")])
 
         result = compute_estimates(self.connection)
         self.assertEqual(result["apps"], 29)
         self.assertEqual((result["chart"], result["chart-category"], result["ratings"], result["installs"]), (25, 1, 1, 1))
         self.assertEqual(result["no downloads"], 1)
-        # App 1 has both paths, app 300 only its Top Grossing rank, the rest no known monetization.
-        self.assertEqual((result["revenue combined"], result["revenue grossing"], result["revenue unknown"]), (1, 1, 27))
+        # Apps 1 and 300 take their Top Grossing rank, app 200 downloads × RPD, the rest no known monetization.
+        self.assertEqual((result["revenue grossing"], result["revenue rpd"], result["revenue unknown"]), (2, 1, 26))
         top = self.connection.execute(
             """SELECT downloads_p10, downloads_p50, downloads_p90, revenue_p10, revenue_p50, revenue_p90, monetization,
                       confidence, revenue_method
                FROM app_estimates_daily WHERE app_id = %s""", (ids["1"],)).fetchone()
         self.assertAlmostEqual(top[1], 156_000, delta=1)
         self.assertTrue(top[0] < top[1] < top[2])
-        # Combined: between the rank-1 grossing value ($75M/month) and the RPD path, nearer the tighter grossing one.
-        rpd_path = 156_000 * 30 * 1.2 * (59.99 / 35) ** 0.5
-        self.assertTrue(rpd_path < top[4] < 2_500_000 * 30)
-        self.assertGreater(top[4], math.sqrt(rpd_path * 2_500_000 * 30))
+        # Rank 1 in Top Grossing: $2.5M a day. The RPD path is far lower, which is expected for a top earner.
+        self.assertAlmostEqual(top[4], 2_500_000 * 30, delta=1)
         self.assertTrue(top[3] < top[4] < top[5])
-        self.assertEqual(top[6:], ("subscription", "medium", "combined"))
+        self.assertEqual(top[6:], ("subscription", "medium", "grossing"))
         only_grossing = self.connection.execute(
             "SELECT downloads_p50, revenue_p50, revenue_method FROM app_estimates_daily WHERE app_id = %s",
             (ids["300"],)).fetchone()
@@ -243,8 +241,13 @@ class DatabaseFlow(unittest.TestCase):
         self.assertAlmostEqual(only_grossing[1], 2_500_000 * 50 ** -0.75 * 30, delta=1)
         self.assertEqual(only_grossing[2], "grossing")
         # The ratings-only app is scaled by the downloads per rating learned from the 25 charted apps.
-        ratings_only = self.scalar("SELECT downloads_p50 FROM app_estimates_daily WHERE app_id = %s", ids["200"])
-        self.assertGreater(ratings_only, 5 * 67)
+        ratings_only = self.connection.execute(
+            "SELECT downloads_p50, revenue_p50, revenue_p90 FROM app_estimates_daily WHERE app_id = %s",
+            (ids["200"],)).fetchone()
+        self.assertGreater(ratings_only[0], 5 * 67)
+        # Outside the all-apps Top Grossing chart (50 deep here), revenue stays below its last rank.
+        self.assertAlmostEqual(ratings_only[2], 2_500_000 * 50 ** -0.75 * 30, delta=1)
+        self.assertLessEqual(ratings_only[1], ratings_only[2])
         android = self.scalar("SELECT downloads_p50 FROM app_estimates_daily WHERE app_id = %s", ids["com.a"])
         self.assertAlmostEqual(android, 2000, delta=1)
         # A second run on the same day replaces its rows.

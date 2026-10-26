@@ -145,13 +145,19 @@ Google vorsichtig ausmessen.
 | Bewertungszuwachs (iOS, US-Store) | × Downloads je Bewertung, gelernt an Chart-Apps (Startwert 67) | niedrig |
 | Installationszähler (Android) | gemessen | mittel |
 
-Umsatz kommt aus zwei Wegen, nach Unsicherheit gewichtet kombiniert:
+Umsatz kommt aus zwei Wegen:
 
 - **A, Top-Grossing-Rang** (US iPhone, Gesamt- und Kategorie-Charts): Rangkurve, Platz 1 ≈ 2,5 Mio. $/Tag, β = 0,75.
   Diese Startwerte sind **Annahmen** aus öffentlichen Größenordnungen und müssen an echten Umsätzen geeicht werden.
 - **B, Downloads × 30 × Erlös pro Download** je Monetarisierung (Abo ~1,20 $ skaliert mit dem Abo-Preis, IAP ~0,50 $,
   Kauf-App = Preis, gratis ohne IAP = 0; Android × 0,35). Die Startwerte werden zur Hälfte (logarithmisch) an die
-  Grossing-Apps angeglichen; die verdienen überdurchschnittlich, deshalb kein voller Ersatz.
+  Grossing-Apps angeglichen (höchstens Faktor 2); die verdienen überdurchschnittlich, deshalb kein voller Ersatz.
+
+Steht eine App im Top-Grossing-Chart, zählt Weg A; Weg B prüft nur gegen (liegt B mehr als Faktor 3 über A, ist
+vermutlich die Download-Schätzung oder die Monetarisierung falsch → Konfidenz niedrig). Grund: Die Abo-Apps im Chart verdienten am 26.10.2026 im Median 20 $ pro Download statt der angenommenen
+1,20 $; ein Mittelwert beider Wege hätte genau diese Apps nach unten gezogen. **Nicht im Gesamtchart zu stehen ist
+selbst eine Messung:** Solche Apps liegen unter dem Wert des letzten Platzes (Umsatz: Platz 100 ≈ 2,4 Mio. $/Monat
+nach der Kurve; Downloads: Platz 200).
 
 Werte sind **Spannen** und im UI als „früh“ markiert.
 **Grenzen von v0:** iOS nur US-Store; außerhalb der Top-100-Grossing-Charts werden Apps, deren Abo ein Nebengeschäft

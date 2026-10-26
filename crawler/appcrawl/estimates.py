@@ -7,12 +7,16 @@ Downloads, best available signal per app:
   ratings         iOS rating growth (app_trends, US store) × downloads per new rating, calibrated on charted apps.
   installs        Android: the exact install counter's growth, a measurement.
 
-Revenue (gross, USD per month), two paths combined by their spread (04 §3.6):
+Revenue (gross, USD per month), two paths:
   A  grossing         US iPhone Top Grossing rank (legacy RSS, 100 deep) on a rank curve; category charts scaled like
                       the download charts. The curve's anchors are assumptions to be calibrated (see GROSSING_*).
   B  rpd              downloads × 30 × revenue per download (RPD) by monetization model. RPD priors come from
                       RevenueCat 2026 (04 §3.2–3.3) and are pulled towards what the Top Grossing apps show.
-Net subtracts the store fee (04 §3.4).
+An app with a Top Grossing rank takes path A: on 26.10.2026 the charted subscription apps earned a median $20 per
+download against the $1.20 prior, so averaging in path B (04 §3.6) would pull exactly these apps down. Path B then only
+checks: if it comes out more than DISAGREEMENT times higher than path A, the downloads or the monetization model are
+likely off and the confidence drops (path B being lower is expected for top earners). Apps outside the all-apps Top Grossing chart are
+capped at its last rank. Net subtracts the store fee (04 §3.4).
 
 Every value is the median of a log-normal; P10/P90 come from the method's spread (sigma, natural log). These are
 uncalibrated priors: the UI marks all v0 numbers as early estimates. Apps without a usable signal get no estimate.
@@ -54,6 +58,8 @@ RPD = {"subscription": 1.2, "iap": 0.5}
 RPD_SIGMA = {"subscription": 0.9, "iap": 1.0, "paid": 0.2, "free": 0.0}
 ANDROID_RPD_FACTOR = 0.35
 MIN_RPD_CALIBRATION_APPS = 10
+MAX_RPD_CALIBRATION_FACTOR = 2.0  # Top Grossing apps monetise far above average; never move a prior more than 2×
+DISAGREEMENT = 3.0  # path B above path A by more than this factor lowers the confidence
 SMALL_BUSINESS_MONTHLY = 1_000_000 / 12  # Apple/Google reduced fee below ~$1M proceeds a year
 
 
@@ -98,18 +104,15 @@ def net_factor(model: str | None, gross_month: float) -> float:
     return 0.70
 
 
-def combine(estimates: list[tuple[float, float]]) -> tuple[float, float]:
-    """Inverse-variance mean of log-normal estimates [(median, sigma)] -> (median, sigma)."""
-    weights = [1 / s**2 for _, s in estimates]
-    log_mean = sum(w * math.log(v) for (v, _), w in zip(estimates, weights)) / sum(weights)
-    return math.exp(log_mean), 1 / math.sqrt(sum(weights))
-
-
-def ranked_estimates(connection: psycopg.Connection, charts: tuple[str, ...]) -> dict[int, tuple[float, bool]]:
-    """app_id -> (value per day, from all-apps chart?) from US iPhone charts of the last 3 captured days.
+def ranked_estimates(
+    connection: psycopg.Connection, charts: tuple[str, ...]
+) -> tuple[dict[int, tuple[float, bool]], float | None]:
+    """(app_id -> (value per day, from all-apps chart?), value at the all-apps chart's last rank) from US iPhone
+    charts of the last 3 captured days.
 
     Category charts are scaled by the median ratio between the all-apps curve and the category curve over the apps
-    that stand in both; an app only in category charts gets the median of its category values.
+    that stand in both; an app only in category charts gets the median of its category values. Not standing in the
+    all-apps chart is itself a measurement: such an app is capped at the value of the all-apps chart's last rank.
     """
     rows = connection.execute(
         """SELECT app_id, chart, genre_id, percentile_cont(0.5) WITHIN GROUP (ORDER BY rank) AS rank
@@ -121,11 +124,15 @@ def ranked_estimates(connection: psycopg.Connection, charts: tuple[str, ...]) ->
     ).fetchall()
     overall: dict[int, float] = {}
     by_genre: dict[tuple[str, str], list[tuple[int, float]]] = defaultdict(list)
+    depth: dict[str, float] = {}
     for app_id, chart, genre, rank in rows:
         if genre == ALL_APPS:
             overall[app_id] = max(overall.get(app_id, 0), curve(chart, rank))
+            depth[chart] = max(depth.get(chart, 0), rank)
         else:
             by_genre[(chart, genre)].append((app_id, rank))
+    # The lowest value the all-apps charts still show: any app outside them earns or downloads less.
+    floor = max((curve(chart, rank) for chart, rank in depth.items()), default=None)
 
     result = {app_id: (value, True) for app_id, value in overall.items()}
     candidates: dict[int, list[float]] = defaultdict(list)
@@ -136,8 +143,9 @@ def ranked_estimates(connection: psycopg.Connection, charts: tuple[str, ...]) ->
             if app_id not in overall:
                 candidates[app_id].append(scale * curve(chart, rank))
     for app_id, values in candidates.items():
-        result[app_id] = (statistics.median(values), False)
-    return result
+        value = statistics.median(values)
+        result[app_id] = (min(value, floor) if floor else value, False)
+    return result, floor
 
 
 def calibrated_rpd(grossing: dict, downloads: dict, monetization: dict, log: Callable[[str], None]) -> dict[str, float]:
@@ -155,7 +163,8 @@ def calibrated_rpd(grossing: dict, downloads: dict, monetization: dict, log: Cal
     for model, values in observed.items():
         if len(values) >= MIN_RPD_CALIBRATION_APPS:
             median = statistics.median(values)
-            base[model] = math.sqrt(RPD[model] * median)
+            factor = min(MAX_RPD_CALIBRATION_FACTOR, max(1 / MAX_RPD_CALIBRATION_FACTOR, math.sqrt(median / RPD[model])))
+            base[model] = RPD[model] * factor
             log(f"RPD {model}: prior {RPD[model]:.2f}, Top Grossing median {median:.2f} from {len(values)} apps "
                 f"-> {base[model]:.2f}")
     return base
@@ -169,11 +178,11 @@ def compute_estimates(connection: psycopg.Connection, day: date | None = None) -
         print(f"estimates: {message}", file=sys.stderr)
 
     db.ensure_month_partition(connection, "app_estimates_daily", day)
-    charted = {
-        app_id: (value, "chart" if overall else "chart-category")
-        for app_id, (value, overall) in ranked_estimates(connection, ("top-free", "top-paid")).items()
-    }
-    grossing = ranked_estimates(connection, ("top-grossing",))
+    ranked, _ = ranked_estimates(connection, ("top-free", "top-paid"))
+    charted = {app_id: (value, "chart" if overall else "chart-category") for app_id, (value, overall) in ranked.items()}
+    grossing, grossing_floor = ranked_estimates(connection, ("top-grossing",))
+    # A US iOS app outside the all-apps Top Grossing chart earns less than its last rank (per month).
+    revenue_cap = grossing_floor * 30 if grossing_floor else None
 
     trends = connection.execute(
         """SELECT DISTINCT ON (t.app_id) t.app_id, t.platform, t.country, t.per_day, a.category_id
@@ -228,21 +237,25 @@ def compute_estimates(connection: psycopg.Connection, day: date | None = None) -
         else:  # only in a Top Grossing chart: revenue without a download estimate
             d, method, platform, scope, sigma_d, confidence = None, None, "ios", "us", None, "low"
 
-        paths = []
         value = rpd(platform, model, price, annual, typical, base_rpd) if d is not None else None
-        if value:
-            paths.append(("rpd", d * 30 * value, math.hypot(sigma_d, RPD_SIGMA[model])))
+        path_b = (d * 30 * value, math.hypot(sigma_d, RPD_SIGMA[model])) if value else None
         if app_id in grossing:
             revenue_day, in_overall = grossing[app_id]
-            kind = "grossing" if in_overall else "grossing-category"
-            paths.append((kind, revenue_day * 30, REVENUE_SIGMA[kind]))
-            confidence = "medium" if in_overall else confidence
+            revenue_method = "grossing" if in_overall else "grossing-category"
+            gross, sigma = revenue_day * 30, REVENUE_SIGMA[revenue_method]
+            confidence = "medium" if in_overall else "low"
+            if path_b and path_b[0] > DISAGREEMENT * gross:
+                confidence = "low"
+        elif path_b:
+            (gross, sigma), revenue_method = path_b, "rpd"
+        else:
+            gross = sigma = revenue_method = None
 
-        if paths:
-            gross, sigma = combine([(v, s) for _, v, s in paths])
-            revenue_method = paths[0][0] if len(paths) == 1 else "combined"
-            revenue = (gross * math.exp(-Z90 * sigma), gross, gross * math.exp(Z90 * sigma),
-                       gross * net_factor(model, gross))
+        if gross is not None:
+            low, high = gross * math.exp(-Z90 * sigma), gross * math.exp(Z90 * sigma)
+            if revenue_cap and platform == "ios" and not grossing.get(app_id, (0, False))[1]:
+                gross, high, low = min(gross, revenue_cap), min(high, revenue_cap), min(low, revenue_cap)
+            revenue = (low, gross, high, gross * net_factor(model, gross))
         elif value == 0:  # free without IAPs: no store revenue
             revenue, revenue_method = (0.0, 0.0, 0.0, 0.0), "rpd"
         else:
