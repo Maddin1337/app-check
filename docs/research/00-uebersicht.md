@@ -19,6 +19,7 @@
 | 06 | [Markt, Wettbewerb, Recht](06-markt-wettbewerb-recht.md) | Firma hinter AppKittie, Traktion, Terms, Wettbewerber, rechtliche Leitplanken, Pricing-Vorschlag |
 | 07 | [Architektur & Roadmap](07-architektur-roadmap.md) | **Unser Bauplan:** Systemarchitektur, Tech-Stack, Datenmodell, Quellen-Ampel, Phasen, Budget, offene Entscheidungen |
 | 08 | [Produktvideo & Lücken](08-produktvideo-und-luecken.md) | Produktvideo Szene für Szene, geklärte Code-Fragen (Hot Ideas, Rescue-Rabatt, Screenshot-Generator, Tier-Limits), Abgleich mit unserem Prototyp |
+| 09 | [Wettbewerber Peekly](09-wettbewerber-peekly.md) | Zweiter Wettbewerber: Funktionen, 19-€-Preis, Sensor-Tower-Bezug der Schätzungen, Ideen zum Übernehmen (Ereignis-Feed, Publisher-Ranking, SEO-Reports, Paywalls) |
 
 Screenshots liegen in [`assets/`](assets/). Jedes Fachdokument kennzeichnet, was **beobachtet** (mit Quelle) und
 was **abgeleitet** ist.
