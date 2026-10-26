@@ -5,6 +5,11 @@ eingerichtet. REA ist ein MCP-Server, mit dem Claude Apps ohne Quellcode untersu
 JavaScript/Electron-Apps, .NET-Assemblies, APKs, Webseiten, HAR-Mitschnitte,
 PyInstaller-Pakete, ELF/PE-Metadaten und vieles mehr.
 
+## Recherche
+
+Die Analyse von AppKittie und der Bauplan für unseren Nachbau liegen in
+[`docs/research/`](docs/research/00-uebersicht.md). Einstieg: `00-uebersicht.md`.
+
 ## Benutzung
 
 Einfach eine Claude-Code-Session in diesem Repo starten und fragen, z. B.:

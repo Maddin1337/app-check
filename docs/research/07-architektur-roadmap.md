@@ -16,7 +16,8 @@
    nachträglich crawlen. Der Chart- und Metrik-Collector ist deshalb das **erste Stück Code**, das live geht
    [03 §0 Nr. 7, 04 §9.1].
 3. **Ehrliche Schätzungen.** Spannen, Konfidenz-Badges und eine öffentliche Methodik-Seite. Schwache Schätzungen
-   werden ausgeblendet statt geraten [04 §8]. Das ist zugleich unser Unterscheidungsmerkmal [06 §3].
+   werden ausgeblendet statt geraten [04 §8]. Das ist zugleich unser Unterscheidungsmerkmal [06 §3]. Zum Vergleich:
+   AppKittie bewirbt „MRR growth“, misst laut eigener API-Doku aber das Wachstum der Review-Anzahl [01].
 4. **Robots-konform zuerst.** Grauzonen-Quellen (Google-Play-`batchexecute`, Apples `amp-api`) erst nach
    juristischer Freigabe [03 §7, 06 §4].
 5. **Eigene Marke, eigenes Design.** Muster übernehmen (Explorer, Karten, Bibliotheken), aber keine 1:1-Kopie von
@@ -43,6 +44,7 @@
 | **Onboarding-Library** | Komplette Onboarding- und Paywall-Flows als Schrittfolge | Freelancer mit echten iPhones + Vision-LLM-Tagging [05 §4] | v1 (Top 300–500) |
 | **Watchlists & Alerts** | Apps/Konkurrenten beobachten, Benachrichtigung bei Rang-, Preis-, Ad-Änderungen | alle Zeitreihen | v1 (Differenzierung [06 §3]) |
 | **Export, API, MCP** | CSV-Export, REST-API mit Credits, MCP-Server für Claude/ChatGPT & Co. | interne API | v1 / v2 |
+| **Öffentliche App-Seiten (SEO)** | Eine indexierbare Seite pro App mit Teaser-Kennzahlen, Sitemap, strukturierte Daten | Katalog + Schätzungen | MVP. AppKittie hat solche Seiten unter `/app/<slug>`, aber weder Sitemap noch robots.txt; per Websuche fanden sich keine indexierten App-Seiten [01] |
 
 Details zu Seiten, Komponenten und Design-Mustern: [01].
 
