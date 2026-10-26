@@ -863,6 +863,10 @@ Umsetzung: `crawler/appcrawl/calibrate.py`, Vergleichswerte in `crawler/appcrawl
   vermutlich flacher als β = 0,75. Sechs Punkte reichen nicht, um das von Rauschen zu trennen; β bleibt fest.
 - **Grenze:** Kein Anker oberhalb von Platz 20. Werte für Platz 1–19 sind Hochrechnung (z. B. ChatGPT Median
   ~290 Mio. $/Monat, P10–P90 91–912 Mio. $) und laufen mit Konfidenz „niedrig“.
+- **Nachtrag 26.10.2026, 8 Anker:** Roblox (US- und Kanada-Buchungen 843 Mio. $/Quartal laut Supplement, Folie 13)
+  und Snapchat (Other Revenue 316 Mio. $/Quartal) ergänzen Platz 5 und 10. Skala jetzt **Faktor 3,75** (9,4 Mio. $/Tag
+  an Platz 1), Reststreuung 0,55. Die neuen Spitzen-Anker widersprechen sich (Snapchat überschätzt, Roblox
+  unterschätzt) und geben keinen Hinweis auf die Krümmung; hochgerechnet ist nur noch Platz 1–4.
 - **Nächste Anker:** mehr Apps zwischen Platz 1 und 20 und unterhalb von Platz 75 (weitere Geschäftsberichte;
   TrustMRR für kleine Apps, sobald Zugang und Nutzungsbedingungen geklärt sind). Ab etwa 15 Ankern β mitschätzen.
 
