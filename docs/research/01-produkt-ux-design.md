@@ -906,6 +906,9 @@ Onboarding nach Signup (abgeleitet): Discovery-Survey → completeOnboarding →
 
 ## 9. Offene Fragen
 
+> **Nachtrag 26.10.2026:** Hot Ideas, `/checkout/cancel`, Screenshot-Generator, Trial-Prompt, Kontingente und das
+> Produktvideo sind in [08 §2–3](08-produktvideo-und-luecken.md) beantwortet bzw. eingegrenzt.
+
 - Wie sehen Explore-Ergebnisse, App-Detail-Inhalte und Ad- oder Video-Detailansichten eingeloggt genau aus
   (Spaltenkonfiguration, Mobile-Tabelle, Export-Dialog, Team-Verwaltung)? Hier sind wir auf Marketing-Screenshots,
   JS-Strings und Doku angewiesen.

@@ -533,6 +533,8 @@ Leitidee: AppKitties Web-Stack ist **bewusst „langweilig“ und schnell gebaut
 
 ## 12. Offene Fragen / nicht feststellbar
 
+> **Nachtrag 26.10.2026:** Nr. 9 (AppIdea, Screenshot-Generator) ist in [08 §3](08-produktvideo-und-luecken.md) geklärt.
+
 1. **Origin-Hoster** hinter Cloudflare (VPS, AWS, Tunnel?): Header lassen keinen Schluss zu.
 2. **Datenbanken** konkret: MongoDB ist nur aus `_id`/`app_mongo_id` abgeleitet; Suchindex (Elastic/Typesense/Atlas Search/ClickHouse) unbekannt; Nutzer-DB (Postgres via Prisma/Drizzle?) unbekannt.
 3. **Rate-Limit-Speicher** (Redis/Upstash/Cloudflare KV?): unbekannt.
