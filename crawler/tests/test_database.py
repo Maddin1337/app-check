@@ -70,6 +70,38 @@ class DatabaseFlow(unittest.TestCase):
         self.assertEqual(self.scalar("SELECT tier FROM apps WHERE store_id = '9'"), 3)
         self.assertIn("ios T0", tiers)
 
+    def test_export_import_round_trip(self):
+        from datetime import date
+
+        from appcrawl.cli import export
+
+        db.ensure_month_partition(self.connection, "chart_ranks", date.today())
+        db.ensure_month_partition(self.connection, "app_metrics_daily", date.today())
+        store_charts(self.connection, ("de", "iphone", "36"), {
+            chart: (ranked, "apple_web") for chart, ranked in parse_chart_page(CHART_PAGE).items()
+        })
+        store_batch(self.connection, ["570060128"], [{"trackId": 570060128, "trackName": "Duolingo",
+                                                      "userRatingCount": 5, "languages": None}], "de")
+        directory = tempfile.mkdtemp()
+        files = {kind: os.path.join(directory, f"{kind}.csv.gz") for kind in ("ios", "charts", "metrics")}
+        for kind, path in files.items():
+            export(self.connection, kind, path)
+
+        self.connection.execute("DROP SCHEMA public CASCADE")
+        self.connection.execute("CREATE SCHEMA public")
+        self.connection.commit()
+        db.migrate(self.connection)
+        for kind in ("charts", "ios", "metrics"):  # order must not matter
+            import_csv(self.connection, kind, files[kind])
+
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM chart_ranks"), 5)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_metrics_daily"), 1)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM apps"), 5)
+        # The placeholder the chart import created was completed by the apps file.
+        self.assertEqual(self.scalar("SELECT status FROM apps WHERE store_id = '570060128'"), "active")
+        self.assertEqual(self.scalar("SELECT name FROM apps WHERE store_id = '570060128'"), "Duolingo")
+        self.assertEqual(self.scalar("SELECT discovered_via FROM apps WHERE store_id = '570060128'"), "chart")
+
     def test_import_keeps_existing_apps(self):
         db.upsert_app_keys(self.connection, "ios", "sitemap:app", {"1": ("kept", None)})
         self.connection.commit()

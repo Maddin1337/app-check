@@ -53,12 +53,25 @@ def stats(connection) -> None:
     print(f"[charts] today: {charts[0]:,} ranks in {charts[1]:,} charts across {charts[2]} storefronts; {days} day(s) of history")
 
 
-def export(connection, platform: str, out: str) -> None:
-    query = f"COPY (SELECT * FROM apps WHERE platform = '{platform}' ORDER BY id) TO STDOUT (FORMAT csv, HEADER)"
-    with gzip.open(out, "wb") as handle, connection.cursor().copy(query) as copy:
+EXPORTS = {
+    "charts": """SELECT c.captured_on, c.captured_at, c.platform, c.country, c.device, c.chart, c.genre_id, c.rank,
+                        a.store_id, c.source
+                 FROM chart_ranks c JOIN apps a ON a.id = c.app_id
+                 ORDER BY c.captured_on, c.country, c.device, c.chart, c.genre_id, c.rank""",
+    "metrics": """SELECT m.day, a.platform, a.store_id, m.country, m.rating_count, m.rating_avg, m.installs_exact,
+                         m.installs_bucket, m.review_count, m.price, m.version, m.fetched_at
+                  FROM app_metrics_daily m JOIN apps a ON a.id = m.app_id
+                  ORDER BY m.day, a.platform, a.store_id, m.country""",
+}
+
+
+def export(connection, kind: str, out: str) -> None:
+    """Charts and metrics carry store IDs instead of internal app IDs, so they import into any database."""
+    select = EXPORTS.get(kind) or f"SELECT * FROM apps WHERE platform = '{kind}' ORDER BY id"
+    with gzip.open(out, "wb") as handle, connection.cursor().copy(f"COPY ({select}) TO STDOUT (FORMAT csv, HEADER)") as copy:
         for chunk in copy:
             handle.write(chunk)
-    print(f"{platform} -> {out}", file=sys.stderr)
+    print(f"{kind} -> {out}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -102,12 +115,12 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("plan-tiers", help="recompute refresh tiers from charts, size and age")
     sub.add_parser("stats", help="progress, tiers and time series coverage")
 
-    p = sub.add_parser("export", help="apps as gzip CSV")
-    p.add_argument("platform", choices=["ios", "android"])
+    p = sub.add_parser("export", help="gzip CSV of apps (per platform), charts or metrics")
+    p.add_argument("kind", choices=["ios", "android", "charts", "metrics"])
     p.add_argument("--out", required=True)
 
-    p = sub.add_parser("import-csv", help="load an earlier appcrawl CSV export")
-    p.add_argument("platform", choices=["ios", "android"])
+    p = sub.add_parser("import-csv", help="load a CSV export (apps, charts or metrics), e.g. on a new server")
+    p.add_argument("kind", choices=["ios", "android", "charts", "metrics"])
     p.add_argument("path")
 
     args = parser.parse_args(argv)
@@ -131,9 +144,9 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "stats":
             stats(connection)
         elif args.command == "export":
-            export(connection, args.platform, args.out)
+            export(connection, args.kind, args.out)
         elif args.command == "import-csv":
-            import_csv(connection, args.platform, args.path)
+            import_csv(connection, args.kind, args.path)
     except KeyboardInterrupt:
         print("interrupted; progress is saved, run the same command to resume", file=sys.stderr)
     finally:

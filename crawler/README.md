@@ -54,7 +54,7 @@ PY=.venv/bin/python
 $PY -m appcrawl discover ios                       # ~30 min, ~1,9 Mio. Apps
 $PY -m appcrawl discover android --rate 2          # ~12 h
 $PY -m appcrawl discover ios --only-new --rescan   # täglich: nur neue Apps
-$PY -m appcrawl import-csv ios ios-apps-2026-10-26.csv.gz   # früheren Export übernehmen
+$PY -m appcrawl import-csv ios ios-apps-2026-10-26.csv.gz   # früheren Export übernehmen (auch SQLite-Format)
 
 # Zeitreihen
 $PY -m appcrawl charts                             # 40 Märkte, iPhone; --countries all, --devices iphone,ipad
@@ -72,6 +72,28 @@ TEST_DATABASE_URL=postgresql:///appcrawl_test $PY -m unittest discover -s tests
 Optionen überall: `--limit N`, `--rate` (Requests pro Sekunde über alle Threads), `--workers`. Jeder Job lässt
 sich abbrechen und mit demselben Aufruf fortsetzen. Den User-Agent setzt `CRAWLER_USER_AGENT` (für den Betrieb
 mit Kontaktadresse versehen).
+
+## Daten sichern und umziehen
+
+`export` schreibt gzip-CSV-Dateien; Charts und Messwerte enthalten Store-IDs statt interner IDs und lassen sich
+deshalb in jede neue Datenbank einspielen. `import-csv` überschreibt nie vorhandene Daten, ein doppelter Import
+erzeugt keine Dubletten, und die Reihenfolge der Dateien ist egal.
+
+```bash
+# alter Rechner
+$PY -m appcrawl export ios --out apps-ios.csv.gz
+$PY -m appcrawl export android --out apps-android.csv.gz
+$PY -m appcrawl export charts --out charts.csv.gz
+$PY -m appcrawl export metrics --out metrics.csv.gz
+
+# neuer Server (nach migrate)
+$PY -m appcrawl import-csv ios apps-ios.csv.gz
+$PY -m appcrawl import-csv android apps-android.csv.gz
+$PY -m appcrawl import-csv charts charts.csv.gz
+$PY -m appcrawl import-csv metrics metrics.csv.gz
+```
+
+Gemessen: 1,89 Mio. Apps importieren in ~65 s, 620.000 Chart-Plätze in ~30 s.
 
 ## Betrieb auf dem Server
 
