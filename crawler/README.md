@@ -21,7 +21,7 @@ cd crawler
 export APPCRAWL_DB=data/appcrawl.sqlite3        # Standard, liegt in .gitignore
 
 # Stufe 1: alle IDs
-python3 -m appcrawl discover ios                 # ~30 min
+python3 -m appcrawl discover ios                 # ~30 min, ~1,9 Mio. Apps
 python3 -m appcrawl discover android             # ~24 h bei 1 Request/s (--rate 2 halbiert das)
 python3 -m appcrawl discover android --sample 150   # Stichprobe + Hochrechnung in ~3 min
 
@@ -47,7 +47,7 @@ Den User-Agent setzt `CRAWLER_USER_AGENT` (für den Betrieb mit Kontaktadresse v
 
 | Schritt | Messung | Hochgerechnet auf den Vollauszug |
 |---|---|---|
-| iOS Discovery | ~1 Sitemap/s, ~1.100–1.300 Apps pro Datei | **~2 Mio. iOS-Apps in ~30 min** |
+| iOS Discovery | alle 1.745 Sitemaps in 29 min (1/s), 0 Fehler | **1.878.379 iOS-Apps** (vollständig, kein Hochrechnen) |
 | Android Discovery | 150 Stichproben-Sitemaps in 152 s, 45,4 Apps pro Datei | **~3,95 Mio. Android-URLs**, ~24 h bei 1/s |
 | iOS Lookup | 2.000 Apps in 10 Requests / 33 s; 93 % im US-Store gefunden | 2 Mio. Apps ≈ 10.000 Requests ≈ **8–9 h pro IP** |
 | Android Details | 80 Seiten in 158 s (0,5/s); 89 % verfügbar; exakte Installationszahl bei allen | 3,95 Mio. Seiten ≈ **90 Tage bei 0,5/s auf einer IP** |

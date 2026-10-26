@@ -1225,7 +1225,7 @@ Der komplette Auszug ist als Werkzeug im Repo umgesetzt: [`crawler/`](../../craw
 
 | Schritt | Ergebnis |
 |---|---|
-| iOS Discovery, alle 1.745 Sitemaps | Lauf aktiv, ~1 Sitemap/s, Ergebnis folgt |
+| iOS Discovery, alle 1.745 Sitemaps | **1.878.379 iOS-Apps** (1.814.727 aus den App-Sitemaps + 63.652 nur in den New-App-Sitemaps) in 29 min, 0 Fehler, ~69 GB XML entpackt geparst |
 | Android Discovery, Stichprobe 150 von 86.990 Sitemaps | 6.813 Apps, 45,4 pro Datei → **~3,95 Mio. App-URLs** |
 | iOS Lookup, 2.000 Apps | 10 Requests in 33 s, 93 % im US-Store gefunden |
 | Android Detailseiten, 80 Apps | 158 s bei 0,5 Requests/s, 89 % verfügbar, exakte Installationszahl bei allen |
