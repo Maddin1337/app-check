@@ -132,3 +132,25 @@ Abgleich der Video-Funktionen mit dem Prototyp in `web/` (Stand dieses Branches:
   faire Trial-Abrechnung aus [00] hat Vorrang.
 - Hot Ideas zeigen **KI-Nachbauten fremder Apps**. Das ist rechtlich und für die Marke heikler als reine
   Marktdaten und gehört vor einer Umsetzung in das Anwaltsgespräch [06 §4].
+
+---
+
+## 6. Nachtrag: Wie AppKittie Umsatz und Downloads schätzt
+
+Geprüft am 26.10.2026: 10 öffentliche Doku-Seiten (`/docs/*.md`, je 1 GET), 4 Routen-HTML, 25 neue JS-Chunks; REA-Analyse
+der drei einschlägigen Chunks (`ev_9f664910…`, 37.603 AST-Knoten, nichts ausgeführt). Keine Datenzeilen geladen:
+Gäste sehen die Kennzahlen nur gesperrt (`isBusinessMetricsLocked`).
+
+| Frage | Befund | Beleg |
+|---|---|---|
+| Methode laut AppKittie | „Revenue and download estimates are modeled from public store signals including **review velocity, pricing, and category benchmarks**. They are directionally accurate but not exact.“ | Doku `reference/filters.md` **[beobachtet]** |
+| Wie das rechnerisch aussieht | Zeitreihen `downloads_per_review` und `revenue_per_review` (mit eigenem Wachstum 7–90 Tage) neben den Reihen `downloads` und `revenue`, die die Historie-Doku als **„Estimated lifetime downloads/revenue“** beschreibt. Naheliegend: *Lifetime-Downloads = Reviews × Downloads je Review*, *Lifetime-Umsatz = Reviews × Umsatz je Review*; Monatswert = Zuwachs über 30 Tage („Est. Monthly Revenue“, in API und Doku „Estimated MRR“) | Zod-Schema `ac564ad4…` @840; Doku `get-app-historicals.md`, `get-app.md` **[Felder beobachtet, Formel abgeleitet]** |
+| Top Grossing | Vorhanden: Rankings-Seite mit Tabs Top Free / Top Paid / **Top Grossing**, API `GET /api/v1/trending?collection=TOP_GROSSING` für `apple_mobile` **und** `google_mobile`, höchstens 100 Plätze, mit `rankChange` | Chunk `ec70fb0a…` @49950; Doku `list-store-rankings.md` **[beobachtet]** |
+| Fließt der Grossing-Rang in die Schätzung? | Unklar. Die Methodenaussage nennt ihn nicht; die Startseite spricht allgemein von „changes in rankings“ | **[unbekannt]** |
+| Woher Grossing kommt | Unbekannt. Die Grenze von 100 Plätzen passt zum Apple-Legacy-RSS-Feed; für Google Play gibt es Grossing nur über `batchexecute` | **[abgeleitet]** |
+| Darstellung | Punktwerte, gerundet: unter 100 „<100“, sonst „12K“ / „3M“ bzw. „$480K“; **keine Spannen, keine Konfidenz** | `formatDisplayMetric`, Chunk `a848e4fc…` **[beobachtet]** |
+
+**Folgerung für uns:** AppKittie rechnet im Kern so wie unser Weg „ratings“ in v0 (Zuwachs der Bewertungen × Faktor je
+Kategorie und Preis), zeigt aber Punktwerte ohne Spanne. Unser Unterschied bleibt: Chart-Ränge als stärkeres Signal,
+gemessene Android-Installationen, Spannen und Konfidenz. Dass AppKittie Top Grossing für beide Stores anzeigt, ändert
+nichts an unserer offenen Rechtsfrage zum RSS-Feed (`robots.txt`) und zu `batchexecute`.
