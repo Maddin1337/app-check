@@ -269,7 +269,9 @@ Zum Vergleich der Preispunkte im Markt: AppKittie $49–79/Monat, Sensor Tower f
 
 1. **Name und Marke** (klar anders als AppKittie) [06 §4].
 2. **Robots-strikt oder pragmatisch** bei Google Play (Charts/Reviews über `batchexecute`) – nach Anwaltsgespräch
-   [03 §4.5].
+   [03 §4.5]. *Teilentscheidung 26.10.2026: Apples Top-Grossing-RSS-Feed (per robots.txt gesperrt) wird auf
+   Entscheidung des Projektinhabers täglich gesammelt; Google Play `batchexecute` weiterhin nicht. Die anwaltliche
+   Prüfung beider Punkte steht aus.*
 3. **Länderfokus:** global wie AppKittie oder Start mit USA + EU/DACH (Similarweb: 19 % der AppKittie-Besuche aus
    Deutschland [06 §1]).
 4. **Backfill-Lizenz** für 12 Monate Historie kaufen oder 12 Monate selbst sammeln [03 §13 Nr. 7].

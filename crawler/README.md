@@ -12,7 +12,7 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `discover ios` | App-Store-Sitemaps aus `robots.txt` (1.392 + ~360 Neu-Apps-Dateien) | alle ~1,9 Mio. iOS-App-IDs |
 | `discover android` | Play-Sitemaps aus `robots.txt` (~87.000 Dateien) | alle ~4 Mio. Android-App-URLs |
 | `charts` | Apples Chart-Seiten (aus der Chart-Sitemap) | Top 200 Free + Paid pro Land × Kategorie (× Gerät), täglich |
-| `charts --grossing-rss` | Legacy-iTunes-RSS | Top 100 Grossing. **Opt-in:** `itunes.apple.com/robots.txt` sperrt `/*/rss/*`, Freigabe nach Anwaltsgespräch |
+| `charts --grossing-rss` | Legacy-iTunes-RSS | Top 100 Grossing pro Land × Kategorie (iPhone, iPad). `itunes.apple.com/robots.txt` sperrt `/*/rss/*`; **seit 26.10.2026 auf Entscheidung des Projektinhabers täglich gesammelt**, die anwaltliche Prüfung steht aus. `--grossing-only` holt nur die Feeds |
 | `refresh-ios` | Offizielle iTunes Lookup API, 200 Apps pro Request | Metadaten + tägliche Bewertungszahl pro Store |
 | `refresh-android` | Play-Detailseite (laut robots.txt erlaubt) | Metadaten + **exakte Installationszahl** täglich |
 | `plan-tiers` | eigene Daten | Wie oft jede App aktualisiert wird (T0 täglich … T3 selten) |
@@ -111,7 +111,7 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 | Uhrzeit (UTC) | Job | Dauer |
 |---|---|---|
 | 00:40 | `discover ios --only-new --rescan` (sonntags voller Rescan) | Minuten (voll ~30 min) |
-| 01:05 | `charts` + `plan-tiers` | ~30 min für 40 Märkte |
+| 01:05 | `charts --grossing-rss` + `plan-tiers` | ~1 h für 40 Märkte |
 | 02:15 | `refresh-ios`, danach `--missing`, dann `trends` und `estimates` | ~8–9 h für den ganzen Katalog, danach Minuten |
 | 13:00 | `refresh-iap --limit 8000`, danach `estimates` | ~4,5 h bei 0,5 Seiten/s |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
@@ -145,11 +145,18 @@ Google vorsichtig ausmessen.
 | Bewertungszuwachs (iOS, US-Store) | × Downloads je Bewertung, gelernt an Chart-Apps (Startwert 67) | niedrig |
 | Installationszähler (Android) | gemessen | mittel |
 
-Umsatz = Downloads × 30 × Erlös pro Download je Monetarisierung (Abo ~1,20 $ skaliert mit dem Abo-Preis, IAP ~0,50 $,
-Kauf-App = Preis, gratis ohne IAP = 0; Android × 0,35). Werte sind **Spannen** und im UI als „früh“ markiert.
-**Grenzen von v0:** iOS nur US-Store; Apps, deren Abo ein Nebengeschäft ist (Amazon, Google Maps), werden überschätzt,
-große Abo-Apps (ChatGPT) eher unterschätzt; Werbeeinnahmen fehlen. Abhilfe bringt vor allem der Top-Grossing-Chart
-(Opt-in, nach Anwaltsfreigabe) und echte Vergleichswerte zur Kalibrierung.
+Umsatz kommt aus zwei Wegen, nach Unsicherheit gewichtet kombiniert:
+
+- **A, Top-Grossing-Rang** (US iPhone, Gesamt- und Kategorie-Charts): Rangkurve, Platz 1 ≈ 2,5 Mio. $/Tag, β = 0,75.
+  Diese Startwerte sind **Annahmen** aus öffentlichen Größenordnungen und müssen an echten Umsätzen geeicht werden.
+- **B, Downloads × 30 × Erlös pro Download** je Monetarisierung (Abo ~1,20 $ skaliert mit dem Abo-Preis, IAP ~0,50 $,
+  Kauf-App = Preis, gratis ohne IAP = 0; Android × 0,35). Die Startwerte werden zur Hälfte (logarithmisch) an die
+  Grossing-Apps angeglichen; die verdienen überdurchschnittlich, deshalb kein voller Ersatz.
+
+Werte sind **Spannen** und im UI als „früh“ markiert.
+**Grenzen von v0:** iOS nur US-Store; außerhalb der Top-100-Grossing-Charts werden Apps, deren Abo ein Nebengeschäft
+ist (Amazon, Google Maps), überschätzt; Werbeeinnahmen fehlen; die Grossing-Kurve ist ungeeicht. Nächster Schritt sind
+echte Vergleichswerte (veröffentlichte Umsätze, Geschäftsberichte) zur Kalibrierung.
 
 ## Wichtige Hinweise
 

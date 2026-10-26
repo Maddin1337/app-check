@@ -7,8 +7,9 @@ APP=/opt/app-check/crawler
 PY=/opt/app-check/crawler/.venv/bin/python
 LOG=/var/log/appcrawl
 
-# Charts first: the time series must not miss a day. ~30 min for 40 storefronts.
-5 1 * * *   cd $APP && flock -n /tmp/appcrawl-charts.lock $PY -m appcrawl charts >> $LOG/charts.log 2>&1 && $PY -m appcrawl plan-tiers >> $LOG/tiers.log 2>&1
+# Charts first: the time series must not miss a day. ~1 h for 40 storefronts incl. the Top Grossing RSS feeds
+# (robots.txt disallows them; collected by the owner's decision of 26.10.2026, legal review pending).
+5 1 * * *   cd $APP && flock -n /tmp/appcrawl-charts.lock $PY -m appcrawl charts --grossing-rss >> $LOG/charts.log 2>&1 && $PY -m appcrawl plan-tiers >> $LOG/tiers.log 2>&1
 
 # iOS: the whole catalog every day via Lookup (~8–9 h at 20 requests/min), then apps missing in the US store,
 # then 7- and 30-day growth for the rising list and the day's download/revenue estimates (minutes; Android's metrics

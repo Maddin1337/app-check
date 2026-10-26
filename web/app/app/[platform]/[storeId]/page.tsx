@@ -90,8 +90,9 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
             <div className="space-y-4 px-4 py-4">
               <div className="grid grid-cols-2 gap-3">
                 <EstimateStat label="Downloads pro Tag" value={formatEstimate(estimate.downloads_p50)}
-                  range={`${formatEstimate(estimate.downloads_p10)} – ${formatEstimate(estimate.downloads_p90)}`}
-                  confidence={estimate.confidence} />
+                  range={estimate.downloads_p50 == null ? "kein Download-Signal"
+                    : `${formatEstimate(estimate.downloads_p10)} – ${formatEstimate(estimate.downloads_p90)}`}
+                  confidence={estimate.downloads_p50 == null ? null : estimate.confidence} />
                 <EstimateStat label="Umsatz pro Monat (brutto)"
                   value={estimate.revenue_p50 == null ? "–" : formatUsd(estimate.revenue_p50)}
                   range={estimate.revenue_p50 == null ? "Monetarisierung noch unbekannt"
@@ -99,9 +100,13 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
                   confidence={estimate.revenue_p50 == null ? null : estimate.confidence} />
               </div>
               <p className="text-xs leading-relaxed text-muted">
-                {METHOD_TEXT[estimate.download_method] ?? estimate.download_method}{" "}
+                {estimate.download_method ? `${METHOD_TEXT[estimate.download_method] ?? estimate.download_method} ` : ""}
                 {estimate.scope === "us" ? "Gilt nur für den US App Store." : "Weltweit."}{" "}
-                {estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
+                {estimate.revenue_method === "grossing" || estimate.revenue_method === "grossing-category"
+                  ? REVENUE_METHOD_TEXT[estimate.revenue_method]
+                  : estimate.revenue_method === "combined"
+                    ? `${REVENUE_METHOD_TEXT.combined} ${estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}`
+                    : estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
                 Spanne = P10 bis P90. Werbeeinnahmen sind nicht enthalten. Methodik: docs/research/04-schaetzmodelle.md.
               </p>
             </div>
@@ -212,6 +217,12 @@ const METHOD_TEXT: Record<string, string> = {
   "chart-category": "Downloads aus dem Platz in einem US-Kategorie-Chart, skaliert über Apps, die zugleich in den Gesamtcharts stehen.",
   ratings: "Downloads aus dem Zuwachs der Bewertungen im US-Store, umgerechnet mit dem Verhältnis Downloads je Bewertung der Chart-Apps.",
   installs: "Downloads gemessen: tägliche Zunahme der exakten Installationszahl auf Google Play.",
+};
+
+const REVENUE_METHOD_TEXT: Record<string, string> = {
+  grossing: "Umsatz aus dem Platz im US-Top-Grossing-Chart über eine Rangkurve (Startwerte, noch nicht kalibriert).",
+  "grossing-category": "Umsatz aus dem Platz in einem US-Top-Grossing-Kategorie-Chart, skaliert über Apps im Gesamtchart.",
+  combined: "Umsatz kombiniert aus dem Top-Grossing-Platz und Downloads × Erlös pro Download, gewichtet nach Unsicherheit.",
 };
 
 const MONETIZATION_TEXT: Record<string, string> = {

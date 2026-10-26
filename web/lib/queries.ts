@@ -196,7 +196,8 @@ export async function appDetail(platform: string, storeId: string) {
           SELECT platform, store_id, name FROM apps WHERE platform = 'ios' AND bundle_id = ${app.store_id} LIMIT 3`
       : [];
   const [estimate] = await sql<(EstimateFields & {
-    day: Date; revenue_net_p50: number | null; download_method: string; monetization: string | null; model_version: string;
+    day: Date; revenue_net_p50: number | null; download_method: string | null; revenue_method: string | null;
+    monetization: string | null; model_version: string;
   })[]>`
     SELECT * FROM app_estimates_daily WHERE app_id = ${app.id} ORDER BY day DESC LIMIT 1`;
   const [monetization] = await sql<{

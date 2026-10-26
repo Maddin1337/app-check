@@ -4,8 +4,9 @@ iOS: the App Store's own chart pages (listed in its chart sitemap, allowed by ro
 carry Top Free and Top Paid, 200 deep, per storefront, device and genre.
 
 Top Grossing only exists in the legacy iTunes RSS feeds (100 deep). itunes.apple.com's
-robots.txt disallows /*/rss/*, so that source is opt-in (--grossing-rss) until the legal
-review in docs/research/07-architektur-roadmap.md §9 has decided.
+robots.txt disallows /*/rss/*; the project owner decided on 26.10.2026 to collect the feed
+anyway (once a day, --grossing-rss) while the legal review in
+docs/research/07-architektur-roadmap.md §9 is pending. --grossing-only reads just the feeds.
 
 Android has no chart lists outside the robots-disallowed batchexecute endpoint; its exact
 install counters (refresh-android) measure downloads directly instead.
@@ -78,10 +79,12 @@ def parse_grossing_rss(body: bytes) -> list[tuple[str, str | None]]:
     return [(e["id"]["attributes"]["im:id"], e.get("im:name", {}).get("label")) for e in entries]
 
 
-def _fetch_target(target, limiter: RateLimiter, grossing_rss: bool) -> dict:
+def _fetch_target(target, limiter: RateLimiter, grossing_rss: bool, grossing_only: bool = False) -> dict:
     country, device, genre = target
-    status, body = fetch(f"https://apps.apple.com/{country}/{device}/charts/{genre}", limiter)
-    charts = {c: (r, "apple_web") for c, r in parse_chart_page(body).items()} if status == 200 else {}
+    charts = {}
+    if not grossing_only:
+        status, body = fetch(f"https://apps.apple.com/{country}/{device}/charts/{genre}", limiter)
+        charts = {c: (r, "apple_web") for c, r in parse_chart_page(body).items()} if status == 200 else {}
     if grossing_rss and device in ("iphone", "ipad"):
         url = RSS.format(
             country=country, ipad="ipad" if device == "ipad" else "", genre="" if genre == ALL_APPS else f"/genre={genre}"
@@ -122,17 +125,22 @@ def collect_charts(
     workers: int,
     grossing_rss: bool,
     limit: int | None,
+    grossing_only: bool = False,
 ) -> None:
+    grossing_rss = grossing_rss or grossing_only
     if grossing_rss:
         print("note: --grossing-rss reads itunes.apple.com/*/rss/*, which its robots.txt disallows", file=sys.stderr)
     db.ensure_month_partition(connection, "chart_ranks", datetime.now(timezone.utc).date())
     limiter = RateLimiter(rate)
-    targets = chart_targets(limiter, countries, devices)[:limit]
+    targets = chart_targets(limiter, countries, devices)
+    if grossing_only:  # the feeds exist for iPhone and iPad only
+        targets = [t for t in targets if t[1] in ("iphone", "ipad")]
+    targets = targets[:limit]
     print(f"charts: {len(targets)} chart pages ({len(set(t[0] for t in targets))} storefronts)", file=sys.stderr)
 
     rows = done = failed = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_fetch_target, t, limiter, grossing_rss): t for t in targets}
+        futures = {pool.submit(_fetch_target, t, limiter, grossing_rss, grossing_only): t for t in targets}
         for future in as_completed(futures):
             target = futures[future]
             try:

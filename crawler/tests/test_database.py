@@ -2,6 +2,7 @@
 
 import csv
 import gzip
+import math
 import os
 import tempfile
 import unittest
@@ -27,7 +28,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -185,7 +186,8 @@ class DatabaseFlow(unittest.TestCase):
             db.ensure_month_partition(self.connection, table, today - timedelta(days=10))
         # 25 apps in the US all-apps chart and the Education chart, with US rating growth for calibration
         charted = {str(n): (f"app{n}", None) for n in range(1, 26)}
-        db.upsert_app_keys(self.connection, "ios", "chart", {**charted, "100": (None, None), "200": (None, None)})
+        db.upsert_app_keys(self.connection, "ios", "chart",
+                           {**charted, "100": (None, None), "200": (None, None), "300": (None, None)})
         db.upsert_app_keys(self.connection, "android", "sitemap:play", {"com.a": (None, None)})
         ids = {s: i for s, i in self.connection.execute("SELECT store_id, id FROM apps")}
         self.connection.execute("UPDATE apps SET category_id = '6017', status = 'active'")
@@ -195,6 +197,7 @@ class DatabaseFlow(unittest.TestCase):
             metrics += [(today - timedelta(days=10), ids[str(n)], "us", 1000, None),
                         (today, ids[str(n)], "us", 1000 + 100 * (26 - n), None)]
         ranks.append(("6017", 30, ids["100"]))  # only in the category chart
+        grossing = [("36", 1, ids["1"]), ("36", 50, ids["300"])]  # app 300: revenue rank only, no download signal
         metrics += [(today - timedelta(days=10), ids["200"], "us", 0, None),  # not charted: ratings only
                     (today, ids["200"], "us", 50, None),
                     (today - timedelta(days=10), ids["com.a"], "ww", None, 1000),
@@ -204,6 +207,10 @@ class DatabaseFlow(unittest.TestCase):
                                         app_id, source)
                VALUES (current_date, now(), 'ios', 'us', 'iphone', 'top-free', %s, %s, %s, 'apple_web')""", ranks)
         self.connection.cursor().executemany(
+            """INSERT INTO chart_ranks (captured_on, captured_at, platform, country, device, chart, genre_id, rank,
+                                        app_id, source)
+               VALUES (current_date, now(), 'ios', 'us', 'iphone', 'top-grossing', %s, %s, %s, 'apple_rss')""", grossing)
+        self.connection.cursor().executemany(
             """INSERT INTO app_metrics_daily (day, app_id, country, rating_count, installs_exact, fetched_at)
                VALUES (%s, %s, %s, %s, %s, now())""", metrics)
         self.connection.commit()
@@ -212,16 +219,29 @@ class DatabaseFlow(unittest.TestCase):
                                                                  ("Pro", Decimal("59.99"), "USD")])
 
         result = compute_estimates(self.connection)
-        self.assertEqual(result["apps"], 28)
+        self.assertEqual(result["apps"], 29)
         self.assertEqual((result["chart"], result["chart-category"], result["ratings"], result["installs"]), (25, 1, 1, 1))
-        self.assertEqual(result["with revenue"], 1)  # only app 1 has a known monetization model
+        self.assertEqual(result["no downloads"], 1)
+        # App 1 has both paths, app 300 only its Top Grossing rank, the rest no known monetization.
+        self.assertEqual((result["revenue combined"], result["revenue grossing"], result["revenue unknown"]), (1, 1, 27))
         top = self.connection.execute(
-            """SELECT downloads_p10, downloads_p50, downloads_p90, revenue_p50, monetization, confidence
+            """SELECT downloads_p10, downloads_p50, downloads_p90, revenue_p10, revenue_p50, revenue_p90, monetization,
+                      confidence, revenue_method
                FROM app_estimates_daily WHERE app_id = %s""", (ids["1"],)).fetchone()
         self.assertAlmostEqual(top[1], 156_000, delta=1)
         self.assertTrue(top[0] < top[1] < top[2])
-        self.assertGreater(top[3], 156_000 * 30)  # subscription at ~$60/year earns > $1 per download
-        self.assertEqual(top[4:], ("subscription", "medium"))
+        # Combined: between the rank-1 grossing value ($75M/month) and the RPD path, nearer the tighter grossing one.
+        rpd_path = 156_000 * 30 * 1.2 * (59.99 / 35) ** 0.5
+        self.assertTrue(rpd_path < top[4] < 2_500_000 * 30)
+        self.assertGreater(top[4], math.sqrt(rpd_path * 2_500_000 * 30))
+        self.assertTrue(top[3] < top[4] < top[5])
+        self.assertEqual(top[6:], ("subscription", "medium", "combined"))
+        only_grossing = self.connection.execute(
+            "SELECT downloads_p50, revenue_p50, revenue_method FROM app_estimates_daily WHERE app_id = %s",
+            (ids["300"],)).fetchone()
+        self.assertIsNone(only_grossing[0])
+        self.assertAlmostEqual(only_grossing[1], 2_500_000 * 50 ** -0.75 * 30, delta=1)
+        self.assertEqual(only_grossing[2], "grossing")
         # The ratings-only app is scaled by the downloads per rating learned from the 25 charted apps.
         ratings_only = self.scalar("SELECT downloads_p50 FROM app_estimates_daily WHERE app_id = %s", ids["200"])
         self.assertGreater(ratings_only, 5 * 67)
@@ -229,7 +249,7 @@ class DatabaseFlow(unittest.TestCase):
         self.assertAlmostEqual(android, 2000, delta=1)
         # A second run on the same day replaces its rows.
         compute_estimates(self.connection)
-        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_estimates_daily"), 28)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_estimates_daily"), 29)
 
 
 if __name__ == "__main__":

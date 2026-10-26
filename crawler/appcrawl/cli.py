@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--rate", type=float, default=1.0)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--grossing-rss", action="store_true", help="also read the legacy RSS Top Grossing feeds")
+    p.add_argument("--grossing-only", action="store_true", help="only the Top Grossing feeds, not the chart pages")
     p.add_argument("--limit", type=int, help="at most N chart pages")
 
     p = sub.add_parser("refresh-ios", help="metadata + daily counters via iTunes Lookup, 200 apps per request")
@@ -145,7 +146,7 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "charts":
             countries = None if args.countries == "all" else args.countries.split(",")
             collect_charts(connection, countries, args.devices.split(","), args.rate, args.workers, args.grossing_rss,
-                           args.limit)
+                           args.limit, args.grossing_only)
         elif args.command == "refresh-ios":
             refresh_ios(connection, args.country, args.rate, args.workers, args.limit, args.missing)
         elif args.command == "refresh-android":

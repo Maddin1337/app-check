@@ -17,7 +17,8 @@ export default function ChartsPage({ searchParams }: PageProps<"/charts">) {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Rankings</h1>
         <p className="mt-1 text-sm text-muted">
-          App-Store-Charts aus Apples eigenen Chart-Seiten, täglich erfasst. Google Play veröffentlicht keine Chart-Listen
+          App-Store-Charts, täglich erfasst: Top Free und Top Paid aus Apples Chart-Seiten (200 Plätze), Top Grossing
+          aus Apples RSS-Feed (100 Plätze). Google Play veröffentlicht keine Chart-Listen
           außerhalb seiner gesperrten internen Schnittstelle; dort messen wir stattdessen die exakten Installationen.
         </p>
       </header>
@@ -78,7 +79,7 @@ async function Charts({ searchParams }: { searchParams: PageProps<"/charts">["se
       >
         {rows.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted">
-            Für diese Auswahl gibt es keine erfassten Daten{chart === "top-grossing" ? " (Top Grossing ist ein Opt-in-Feed, siehe crawler/README.md)" : ""}.
+            Für diese Auswahl gibt es keine erfassten Daten{chart === "top-grossing" ? " (Top Grossing gibt es nur für iPhone und iPad, 100 Plätze tief)" : ""}.
           </p>
         ) : (
           <ol className="divide-y divide-border">
