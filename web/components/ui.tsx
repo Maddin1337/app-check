@@ -90,3 +90,18 @@ export function Sparkline({ values, width = 96, height = 28 }: { values: number[
     </svg>
   );
 }
+
+const CONFIDENCE_LABEL = { high: "hoch", medium: "mittel", low: "niedrig" } as const;
+
+/** Every v0 number is an early, uncalibrated estimate; the badge says so next to the value. */
+export function ConfidenceBadge({ confidence }: { confidence: "low" | "medium" | "high" | null }) {
+  if (!confidence) return null;
+  return (
+    <span
+      title={`Schätzung, Modell v0 (früh) · Konfidenz ${CONFIDENCE_LABEL[confidence]}`}
+      className={`rounded px-1 py-px text-[10px] font-medium ${confidence === "low" ? "bg-surface-2 text-muted" : "bg-primary-soft text-primary"}`}
+    >
+      {confidence === "low" ? "grob" : "früh"}
+    </span>
+  );
+}

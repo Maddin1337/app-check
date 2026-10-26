@@ -12,6 +12,8 @@ from appcrawl.import_csv import import_csv
 from appcrawl.refresh_ios import store_batch
 from appcrawl.tiers import plan_tiers
 from appcrawl.trends import compute_trends
+from appcrawl.estimates import compute_estimates
+from appcrawl.iap import store_iap
 
 from test_parsing import CHART_PAGE
 
@@ -25,7 +27,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -172,6 +174,62 @@ class DatabaseFlow(unittest.TestCase):
         # Recomputing replaces the rows instead of adding to them.
         compute_trends(self.connection)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_trends"), 3)
+
+    def test_estimates(self):
+        from datetime import date, timedelta
+        from decimal import Decimal
+
+        today = date.today()
+        for table in ("chart_ranks", "app_metrics_daily"):
+            db.ensure_month_partition(self.connection, table, today)
+            db.ensure_month_partition(self.connection, table, today - timedelta(days=10))
+        # 25 apps in the US all-apps chart and the Education chart, with US rating growth for calibration
+        charted = {str(n): (f"app{n}", None) for n in range(1, 26)}
+        db.upsert_app_keys(self.connection, "ios", "chart", {**charted, "100": (None, None), "200": (None, None)})
+        db.upsert_app_keys(self.connection, "android", "sitemap:play", {"com.a": (None, None)})
+        ids = {s: i for s, i in self.connection.execute("SELECT store_id, id FROM apps")}
+        self.connection.execute("UPDATE apps SET category_id = '6017', status = 'active'")
+        ranks, metrics = [], []
+        for n in range(1, 26):
+            ranks += [("36", n, ids[str(n)]), ("6017", n, ids[str(n)])]
+            metrics += [(today - timedelta(days=10), ids[str(n)], "us", 1000, None),
+                        (today, ids[str(n)], "us", 1000 + 100 * (26 - n), None)]
+        ranks.append(("6017", 30, ids["100"]))  # only in the category chart
+        metrics += [(today - timedelta(days=10), ids["200"], "us", 0, None),  # not charted: ratings only
+                    (today, ids["200"], "us", 50, None),
+                    (today - timedelta(days=10), ids["com.a"], "ww", None, 1000),
+                    (today, ids["com.a"], "ww", None, 21000)]
+        self.connection.cursor().executemany(
+            """INSERT INTO chart_ranks (captured_on, captured_at, platform, country, device, chart, genre_id, rank,
+                                        app_id, source)
+               VALUES (current_date, now(), 'ios', 'us', 'iphone', 'top-free', %s, %s, %s, 'apple_web')""", ranks)
+        self.connection.cursor().executemany(
+            """INSERT INTO app_metrics_daily (day, app_id, country, rating_count, installs_exact, fetched_at)
+               VALUES (%s, %s, %s, %s, %s, now())""", metrics)
+        self.connection.commit()
+        compute_trends(self.connection)
+        store_iap(self.connection, ids["1"], "us", Decimal(0), [("Pro", Decimal("9.99"), "USD"),
+                                                                 ("Pro", Decimal("59.99"), "USD")])
+
+        result = compute_estimates(self.connection)
+        self.assertEqual(result["apps"], 28)
+        self.assertEqual((result["chart"], result["chart-category"], result["ratings"], result["installs"]), (25, 1, 1, 1))
+        self.assertEqual(result["with revenue"], 1)  # only app 1 has a known monetization model
+        top = self.connection.execute(
+            """SELECT downloads_p10, downloads_p50, downloads_p90, revenue_p50, monetization, confidence
+               FROM app_estimates_daily WHERE app_id = %s""", (ids["1"],)).fetchone()
+        self.assertAlmostEqual(top[1], 156_000, delta=1)
+        self.assertTrue(top[0] < top[1] < top[2])
+        self.assertGreater(top[3], 156_000 * 30)  # subscription at ~$60/year earns > $1 per download
+        self.assertEqual(top[4:], ("subscription", "medium"))
+        # The ratings-only app is scaled by the downloads per rating learned from the 25 charted apps.
+        ratings_only = self.scalar("SELECT downloads_p50 FROM app_estimates_daily WHERE app_id = %s", ids["200"])
+        self.assertGreater(ratings_only, 5 * 67)
+        android = self.scalar("SELECT downloads_p50 FROM app_estimates_daily WHERE app_id = %s", ids["com.a"])
+        self.assertAlmostEqual(android, 2000, delta=1)
+        # A second run on the same day replaces its rows.
+        compute_estimates(self.connection)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_estimates_daily"), 28)
 
 
 if __name__ == "__main__":

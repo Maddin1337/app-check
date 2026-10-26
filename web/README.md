@@ -5,8 +5,8 @@ Arbeitstitel „app-check“, eigenes Design (Iris-Violett, Geist), bewusst ande
 
 | Seite | Inhalt |
 |---|---|
-| `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie, Veröffentlichung, Bewertungen, Preis, „nur in Charts“, Sortierung nach Bewertungen, bestem Chart-Platz, Neuheit. Filter stehen in der URL und sind teilbar |
-| `/app/[platform]/[storeId]` | App-Detail: Kennzahlen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
+| `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie, Veröffentlichung, Bewertungen, Preis, geschätzter Umsatz, „nur in Charts“, Sortierung nach Bewertungen, geschätztem Umsatz bzw. Downloads, bestem Chart-Platz, Neuheit. Filter stehen in der URL und sind teilbar |
+| `/app/[platform]/[storeId]` | App-Detail: Kennzahlen, geschätzte Downloads und Umsatz (Spanne, Methode, Konfidenz), In-App-Käufe mit Preisen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
 | `/charts` | Rankings pro Land, Chart, Kategorie und Gerät |
 | `/rising` | Aufsteiger: Zuwachs über 7/30 Tage (iOS Bewertungen, Android Installationen) mit Sparkline, absolut oder in %; dazu Chart-Aufsteiger gegenüber vor 7 Tagen. Liest `app_trends` (Crawler-Job `trends`) |
 
@@ -25,7 +25,7 @@ und werden pro Request frisch gerendert.
 
 ## Bekannte Grenzen des Prototyps
 
-- Noch kein Login, keine Bezahlung, keine Schätzungen für Downloads und Umsatz.
+- Noch kein Login, keine Bezahlung. Schätzungen für Downloads und Umsatz sind Modell v0 (früh, unkalibriert, iOS nur US-Store).
 - „Bester Chart-Platz“ wird pro Request aus `chart_ranks` aggregiert. Bei vielen Märkten und Tagen gehört das in
   eine täglich berechnete Tabelle.
 - Die Suche nutzt den Trigramm-Index auf dem Namen; mit „Inkl. ohne Metadaten“ wird zusätzlich der Slug

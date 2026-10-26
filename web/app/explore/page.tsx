@@ -4,8 +4,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { AutoSubmitCheckbox, AutoSubmitSelect } from "@/components/auto-submit";
-import { AppIcon, Card, PlatformBadge, RankBadge, Skeleton } from "@/components/ui";
-import { displayName, formatCompact, formatDate, formatNumber, formatPrice } from "@/lib/format";
+import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton } from "@/components/ui";
+import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPrice, formatUsd } from "@/lib/format";
 import { categories, exploreApps, overview, PAGE_SIZE, parseFilters, type ExploreFilters } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "App-Explorer" };
@@ -48,6 +48,10 @@ async function Explorer({ searchParams }: { searchParams: PageProps<"/explore">[
         aside={<span className="text-xs text-muted">Seite {filters.page} von {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>}
       >
         <ResultTable rows={rows} showInstalls={filters.platform !== "ios"} />
+        <p className="border-t border-border px-4 py-2 text-xs text-muted">
+          Downloads und Umsatz sind Schätzungen (Modell v0, früh), gerundet; die Spanne P10–P90 steht im Tooltip. iOS: nur
+          US App Store, Android: weltweit. Umsatz brutto pro Monat aus Store-Käufen, ohne Werbeeinnahmen.
+        </p>
         <Pagination filters={filters} total={total} />
       </Card>
     </>
@@ -71,8 +75,10 @@ function Filters({ filters, categoryList }: { filters: ExploreFilters; categoryL
         options={[["", "Egal"], ["100", "100"], ["1000", "1.000"], ["10000", "10.000"], ["100000", "100.000"]]} />
       <Select label="Preis" name="price" value={filters.price}
         options={[["", "Alle"], ["free", "Kostenlos"], ["paid", "Kostenpflichtig"]]} />
+      <Select label="Umsatz/Monat ab" name="minRevenue" value={String(filters.minRevenue || "")}
+        options={[["", "Egal"], ["1000", "1.000 $"], ["10000", "10.000 $"], ["100000", "100.000 $"], ["1000000", "1 Mio. $"]]} />
       <Select label="Sortierung" name="sort" value={filters.sort}
-        options={[["ratings", "Meiste Bewertungen"], ["rank", "Bester Chart-Platz"], ["newest", "Neueste"], ["updated", "Zuletzt aktualisiert"], ["name", "Name"]]} />
+        options={[["ratings", "Meiste Bewertungen"], ["revenue", "Höchster Umsatz (geschätzt)"], ["downloads", "Meiste Downloads (geschätzt)"], ["rank", "Bester Chart-Platz"], ["newest", "Neueste"], ["updated", "Zuletzt aktualisiert"], ["name", "Name"]]} />
       <div className="flex h-9 items-center gap-4 px-1 text-sm">
         <label className="flex items-center gap-2">
           <AutoSubmitCheckbox name="charted" value="1" defaultChecked={filters.charted} className="accent-primary" />
@@ -109,13 +115,15 @@ function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof e
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[880px] text-sm">
+      <table className="w-full min-w-[1080px] text-sm">
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-border">
             <th className="px-4 py-2 font-medium">App</th>
             <th className="px-3 py-2 font-medium">Kategorie</th>
             <th className="px-3 py-2 text-right font-medium">Bewertungen</th>
             {showInstalls ? <th className="px-3 py-2 text-right font-medium">Installationen</th> : null}
+            <th className="px-3 py-2 text-right font-medium">Downloads/Tag</th>
+            <th className="px-3 py-2 text-right font-medium">Umsatz/Monat</th>
             <th className="px-3 py-2 font-medium">Chart heute</th>
             <th className="px-3 py-2 font-medium">Veröffentlicht</th>
             <th className="px-4 py-2 text-right font-medium">Preis</th>
@@ -146,6 +154,17 @@ function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof e
                   {app.rating_avg ? <span className="ml-1.5 text-xs text-muted">★ {app.rating_avg.toFixed(1)}</span> : null}
                 </td>
                 {showInstalls ? <td className="px-3 py-2 text-right tabular-nums">{formatCompact(app.installs_exact)}</td> : null}
+                <td className="px-3 py-2 text-right tabular-nums"
+                  title={app.downloads_p50 != null ? `${formatEstimate(app.downloads_p10)} – ${formatEstimate(app.downloads_p90)} pro Tag (${app.scope === "us" ? "US App Store" : "weltweit"})` : undefined}>
+                  {formatEstimate(app.downloads_p50)}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums"
+                  title={app.revenue_p50 != null ? `${formatUsd(app.revenue_p10)} – ${formatUsd(app.revenue_p90)} pro Monat, brutto` : undefined}>
+                  <span className="inline-flex items-center gap-1.5">
+                    {app.revenue_p50 != null ? formatUsd(app.revenue_p50) : "–"}
+                    {app.revenue_p50 != null ? <ConfidenceBadge confidence={app.confidence} /> : null}
+                  </span>
+                </td>
                 <td className="px-3 py-2"><RankBadge rank={app.best_rank} entries={app.chart_entries} /></td>
                 <td className="px-3 py-2 tabular-nums text-muted">{formatDate(app.released_at)}</td>
                 <td className="px-4 py-2 text-right text-muted">{formatPrice(app.price, app.currency)}</td>

@@ -9,7 +9,8 @@ export type ExploreFilters = {
   price: "" | "free" | "paid";
   charted: boolean;
   all: boolean; // include apps not refreshed yet (only an ID and slug)
-  sort: "ratings" | "rank" | "newest" | "updated" | "name";
+  minRevenue: number; // estimated gross USD per month (model median)
+  sort: "ratings" | "rank" | "revenue" | "downloads" | "newest" | "updated" | "name";
   page: number;
 };
 
@@ -31,7 +32,8 @@ export function parseFilters(params: Params): ExploreFilters {
     price: pick(one(params.price), ["", "free", "paid"] as const, ""),
     charted: one(params.charted) === "1",
     all: one(params.all) === "1",
-    sort: pick(one(params.sort), ["ratings", "rank", "newest", "updated", "name"] as const, "ratings"),
+    minRevenue: Math.max(0, Number.parseInt(one(params.minRevenue), 10) || 0),
+    sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "newest", "updated", "name"] as const, "ratings"),
     page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
   };
 }
@@ -57,6 +59,23 @@ export type AppRow = {
   chart_entries: number | null;
 };
 
+export type EstimateFields = {
+  downloads_p10: number | null;
+  downloads_p50: number | null;
+  downloads_p90: number | null;
+  revenue_p10: number | null;
+  revenue_p50: number | null;
+  revenue_p90: number | null;
+  confidence: "low" | "medium" | "high" | null;
+  scope: "us" | "ww" | null;
+};
+
+/** Model estimates of the latest computed day (crawler job `estimates`). */
+const latestEstimates = sql`
+  SELECT app_id, downloads_p10, downloads_p50, downloads_p90, revenue_p10, revenue_p50, revenue_p90, confidence, scope
+  FROM app_estimates_daily
+  WHERE day = (SELECT MAX(day) FROM app_estimates_daily)`;
+
 /** Best chart position per app on the latest captured day. */
 const bestRanks = sql`
   SELECT app_id, MIN(rank)::int AS best_rank, COUNT(*)::int AS chart_entries
@@ -74,13 +93,19 @@ function where(f: ExploreFilters) {
     ${f.released ? sql`AND a.released_at >= current_date - ${Number(f.released)}::int` : sql``}
     ${f.minRatings ? sql`AND a.rating_count >= ${f.minRatings}` : sql``}
     ${f.price === "free" ? sql`AND a.price = 0` : f.price === "paid" ? sql`AND a.price > 0` : sql``}
-    ${f.charted ? sql`AND b.app_id IS NOT NULL` : sql``}`;
+    ${f.charted ? sql`AND b.app_id IS NOT NULL` : sql``}
+    ${f.minRevenue ? sql`AND e.revenue_p50 >= ${f.minRevenue}` : sql``}
+    ${f.sort === "revenue" ? sql`AND e.revenue_p50 IS NOT NULL` : f.sort === "downloads" ? sql`AND e.app_id IS NOT NULL` : sql``}`;
 }
 
 function orderBy(sort: ExploreFilters["sort"]) {
   switch (sort) {
     case "rank":
       return sql`ORDER BY b.best_rank NULLS LAST, a.rating_count DESC NULLS LAST`;
+    case "revenue":
+      return sql`ORDER BY e.revenue_p50 DESC NULLS LAST, a.id`;
+    case "downloads":
+      return sql`ORDER BY e.downloads_p50 DESC NULLS LAST, a.id`;
     case "newest":
       return sql`ORDER BY a.released_at DESC NULLS LAST`;
     case "updated":
@@ -93,18 +118,19 @@ function orderBy(sort: ExploreFilters["sort"]) {
 }
 
 export async function exploreApps(f: ExploreFilters) {
-  const rows = await sql<AppRow[]>`
-    WITH b AS (${bestRanks})
+  const rows = await sql<(AppRow & EstimateFields)[]>`
+    WITH b AS (${bestRanks}), e AS (${latestEstimates})
     SELECT a.id, a.platform, a.store_id, a.name, a.slug, a.developer_name, a.category, a.icon_url, a.price, a.currency,
            a.rating_avg, a.rating_count, a.installs_exact, a.released_at, a.store_updated_at, a.status,
-           b.best_rank, b.chart_entries
-    FROM apps a LEFT JOIN b ON b.app_id = a.id
+           b.best_rank, b.chart_entries,
+           e.downloads_p10, e.downloads_p50, e.downloads_p90, e.revenue_p10, e.revenue_p50, e.revenue_p90, e.confidence, e.scope
+    FROM apps a LEFT JOIN b ON b.app_id = a.id LEFT JOIN e ON e.app_id = a.id
     ${where(f)}
     ${orderBy(f.sort)}
     LIMIT ${PAGE_SIZE} OFFSET ${(f.page - 1) * PAGE_SIZE}`;
   const [{ total }] = await sql<{ total: number }[]>`
-    WITH b AS (${bestRanks})
-    SELECT COUNT(*)::int AS total FROM apps a LEFT JOIN b ON b.app_id = a.id ${where(f)}`;
+    WITH b AS (${bestRanks}), e AS (${latestEstimates})
+    SELECT COUNT(*)::int AS total FROM apps a LEFT JOIN b ON b.app_id = a.id LEFT JOIN e ON e.app_id = a.id ${where(f)}`;
   return { rows, total };
 }
 
@@ -169,7 +195,18 @@ export async function appDetail(platform: string, storeId: string) {
       ? await sql<{ platform: string; store_id: string; name: string | null }[]>`
           SELECT platform, store_id, name FROM apps WHERE platform = 'ios' AND bundle_id = ${app.store_id} LIMIT 3`
       : [];
-  return { app, ranks, metrics, siblings };
+  const [estimate] = await sql<(EstimateFields & {
+    day: Date; revenue_net_p50: number | null; download_method: string; monetization: string | null; model_version: string;
+  })[]>`
+    SELECT * FROM app_estimates_daily WHERE app_id = ${app.id} ORDER BY day DESC LIMIT 1`;
+  const [monetization] = await sql<{
+    model: string; country: string; fetched_at: Date; iap_count: number; sub_annual_price: string | null;
+    iap_typical: string | null; iap_min: string | null; iap_max: string | null; currency: string | null;
+  }[]>`SELECT * FROM app_monetization WHERE app_id = ${app.id}`;
+  const iaps = await sql<{ position: number; name: string; price: string; currency: string }[]>`
+    SELECT position, name, price, currency FROM iap_products
+    WHERE app_id = ${app.id} AND country = ${monetization?.country ?? "us"} ORDER BY position`;
+  return { app, ranks, metrics, siblings, estimate, monetization, iaps };
 }
 
 export async function chartFacets() {

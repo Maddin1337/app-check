@@ -28,3 +28,9 @@ export function displayName(name: string | null, slug: string | null, storeId: s
 
 const percent = new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" });
 export const formatPercent = (value: number | null) => (value == null ? "–" : percent.format(value));
+
+const usd = new Intl.NumberFormat("de-DE", { style: "currency", currency: "USD", notation: "compact", maximumSignificantDigits: 2 });
+const rounded = new Intl.NumberFormat("de-DE", { notation: "compact", maximumSignificantDigits: 2 });
+/** Estimates are rounded to two significant digits: more precision would only pretend accuracy. */
+export const formatUsd = (value: number | null) => (value == null ? "–" : usd.format(value));
+export const formatEstimate = (value: number | null) => (value == null ? "–" : rounded.format(value));

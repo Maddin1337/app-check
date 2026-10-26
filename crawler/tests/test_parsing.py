@@ -1,8 +1,11 @@
 import json
 import unittest
+from decimal import Decimal
 
 from appcrawl.charts import CHART_URL, parse_chart_page, parse_grossing_rss
 from appcrawl.discover import parse_apple_urlset, parse_locs, parse_play_urlset, sitemap_indexes
+from appcrawl.estimates import curve, net_factor, rpd
+from appcrawl.iap import classify, parse_app_page, parse_price
 from appcrawl.refresh_android import _domain, _released
 from appcrawl.refresh_ios import app_fields
 
@@ -129,6 +132,65 @@ class FieldMapping(unittest.TestCase):
         self.assertIsNone(_domain(None))
         self.assertEqual(str(_released("May 29, 2013")), "2013-05-29")
         self.assertIsNone(_released("29. Mai 2013"))
+
+
+def app_page(annotations: list) -> bytes:
+    data = {"data": [{"data": {"shelfMapping": {"information": {"items": annotations}}}}]}
+    return b'<script type="application/json" id="serialized-server-data">' + json.dumps(data).encode() + b"</script>"
+
+
+def pairs(*rows):
+    return [{"$kind": "textPair", "leadingText": name, "trailingText": value} for name, value in rows]
+
+
+class IapParsing(unittest.TestCase):
+    def test_finds_the_price_list_whatever_its_title(self):
+        page = app_page([
+            {"title": "Age Rating", "items": pairs(("Age", "4+"))},
+            {"title": "In-App-Käufe", "items": pairs(("Super Duolingo", "$9.99"), ("Super Duolingo", "$83.99"))
+             + [{"$kind": "button"}]},
+        ])
+        self.assertEqual(parse_app_page(page), [("Super Duolingo", Decimal("9.99"), "USD"),
+                                                ("Super Duolingo", Decimal("83.99"), "USD")])
+
+    def test_no_iaps_and_unreadable_pages(self):
+        self.assertEqual(parse_app_page(app_page([{"title": "Seller", "items": []}])), [])
+        self.assertIsNone(parse_app_page(b"<html></html>"))
+
+    def test_prices(self):
+        self.assertEqual(parse_price("$1,299.99"), (Decimal("1299.99"), "USD"))
+        self.assertEqual(parse_price("1.299,99 €"), (Decimal("1299.99"), "EUR"))
+        self.assertIsNone(parse_price("4+"))
+        self.assertIsNone(parse_price("312.4 MB"))
+
+    def test_monetization_models(self):
+        def items(*rows):
+            return [(name, Decimal(price), "USD") for name, price in rows]
+        calm = classify(0, items(("Calm Premium", "79.99"), ("Calm Premium", "14.99"), ("Calm Premium", "69.99")))
+        self.assertEqual((calm["model"], calm["sub_annual_price"]), ("subscription", 74.99))
+        weekly = classify(0, items(("Pro Weekly", "4.99"), ("Pro Yearly", "39.99")))
+        self.assertEqual(weekly["sub_annual_price"], round((4.99 * 52 + 39.99) / 2, 2))
+        game = classify(0, items(("Special Offer", "4.99"), ("Special Offer", "9.99"), ("Pouch of Gems", "0.99")))
+        self.assertEqual((game["model"], game["iap_typical"]), ("iap", 4.99))
+        self.assertEqual(classify(Decimal("5.99"), [])["model"], "paid")
+        self.assertEqual(classify(0, [])["model"], "free")
+
+
+class EstimateModel(unittest.TestCase):
+    def test_rank_curves_fall_with_rank(self):
+        self.assertAlmostEqual(curve("top-free", 1), 156_000)
+        self.assertGreater(curve("top-free", 10), 45_000)  # Sensor Tower 2022: top-10 threshold ≈ 52k/day
+        self.assertLess(curve("top-free", 200), curve("top-free", 11))
+        self.assertLess(curve("top-paid", 1), curve("top-free", 200))
+
+    def test_revenue_per_download(self):
+        self.assertIsNone(rpd("ios", None, 0, None, None))
+        self.assertEqual(rpd("ios", "free", 0, None, None), 0)
+        self.assertEqual(rpd("ios", "paid", 5.99, None, None), 5.99)
+        self.assertGreater(rpd("ios", "subscription", 0, 120, None), rpd("ios", "subscription", 0, 20, None))
+        self.assertLess(rpd("android", "iap", 0, None, 5), rpd("ios", "iap", 0, None, 5))
+        self.assertEqual(net_factor("iap", 1_000_000), 0.70)
+        self.assertEqual(net_factor("iap", 10_000), 0.85)
 
 
 if __name__ == "__main__":

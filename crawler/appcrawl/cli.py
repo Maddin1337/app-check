@@ -7,6 +7,8 @@ import sys
 from . import db
 from .charts import DEFAULT_COUNTRIES, collect_charts
 from .discover import discover
+from .estimates import compute_estimates
+from .iap import refresh_iap
 from .import_csv import import_csv
 from .refresh_android import refresh_android
 from .refresh_ios import refresh_ios
@@ -115,6 +117,13 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("plan-tiers", help="recompute refresh tiers from charts, size and age")
     sub.add_parser("trends", help="recompute 7- and 30-day growth from the daily metrics")
+    sub.add_parser("estimates", help="today's downloads and revenue estimates (model v0, ranges)")
+
+    p = sub.add_parser("refresh-iap", help="in-app purchase prices from App Store pages, monetization model per app")
+    p.add_argument("--country", default="us")
+    p.add_argument("--rate", type=float, default=0.5, help="pages per second (default 0.5)")
+    p.add_argument("--workers", type=int, default=2)
+    p.add_argument("--limit", type=int, default=8000, help="at most N pages (default 8000, ~4.5 h)")
     sub.add_parser("stats", help="progress, tiers and time series coverage")
 
     p = sub.add_parser("export", help="gzip CSV of apps (per platform), charts or metrics")
@@ -145,6 +154,10 @@ def main(argv: list[str] | None = None) -> None:
             print(plan_tiers(connection), file=sys.stderr)
         elif args.command == "trends":
             print(compute_trends(connection), file=sys.stderr)
+        elif args.command == "estimates":
+            print(compute_estimates(connection), file=sys.stderr)
+        elif args.command == "refresh-iap":
+            refresh_iap(connection, args.country, args.rate, args.workers, args.limit)
         elif args.command == "stats":
             stats(connection)
         elif args.command == "export":

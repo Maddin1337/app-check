@@ -17,6 +17,8 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `refresh-android` | Play-Detailseite (laut robots.txt erlaubt) | Metadaten + **exakte Installationszahl** täglich |
 | `plan-tiers` | eigene Daten | Wie oft jede App aktualisiert wird (T0 täglich … T3 selten) |
 | `trends` | eigene Messwerte | Wachstum über 7 und 30 Tage: iOS Bewertungen pro Store, Android exakte Installationen |
+| `refresh-iap` | App-Store-Seiten (laut robots.txt erlaubt) | Liste der In-App-Käufe mit Preis und Monetarisierung pro App (Abo, IAP, Kauf-App, gratis); Android aus der Preisspanne der Detailseite |
+| `estimates` | eigene Daten | **Schätzmodell v0:** Downloads pro Tag und Umsatz pro Monat (brutto/netto) als Spanne P10–P90 mit Konfidenz |
 
 **Android hat keine Charts:** Die Ranglisten lädt Google Play nur über die gesperrte interne Schnittstelle
 (`batchexecute`). Dafür misst die tägliche Differenz der exakten Installationszahl Downloads direkt; das ist
@@ -32,6 +34,8 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `chart_ranks` | Rang pro Tag × Land × Gerät × Chart × Kategorie (monatlich partitioniert) |
 | `app_metrics_daily` | Bewertungen, Installationen, Preis, Version pro App × Store × Tag (monatlich partitioniert) |
 | `app_trends` | Zuwachs pro App über 7 und 30 Tage, täglich neu berechnet (`0002_trends.sql`) |
+| `iap_products`, `app_monetization` | gelistete In-App-Käufe und abgeleitetes Monetarisierungsmodell (`0003_estimates.sql`) |
+| `app_estimates_daily` | Schätzungen pro App und Tag (monatlich partitioniert) |
 | `sitemap_files` | Fortschritt der Discovery |
 
 ## Einrichtung
@@ -65,6 +69,8 @@ $PY -m appcrawl refresh-ios                        # fällige Apps im US-Store
 $PY -m appcrawl refresh-ios --missing --country de # nicht gefundene Apps im Chart-Store bzw. in DE
 $PY -m appcrawl refresh-android --limit 20000
 $PY -m appcrawl trends                             # Wachstum 7/30 Tage, braucht 2 Messtage
+$PY -m appcrawl refresh-iap --limit 8000           # IAP-Preise, wichtige iOS-Apps wöchentlich (~4,5 h)
+$PY -m appcrawl estimates                          # Downloads und Umsatz, Modell v0
 
 # Überblick, Export, Tests
 $PY -m appcrawl stats
@@ -106,7 +112,8 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 |---|---|---|
 | 00:40 | `discover ios --only-new --rescan` (sonntags voller Rescan) | Minuten (voll ~30 min) |
 | 01:05 | `charts` + `plan-tiers` | ~30 min für 40 Märkte |
-| 02:15 | `refresh-ios`, danach `--missing`, dann `trends` | ~8–9 h für den ganzen Katalog, `trends` wenige Minuten |
+| 02:15 | `refresh-ios`, danach `--missing`, dann `trends` und `estimates` | ~8–9 h für den ganzen Katalog, danach Minuten |
+| 13:00 | `refresh-iap --limit 8000`, danach `estimates` | ~4,5 h bei 0,5 Seiten/s |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
 | So 03:00 | `discover android` | ~24 h bei 1/s |
 
@@ -125,6 +132,24 @@ Google vorsichtig ausmessen.
 | Charts US + DE + GB | 126 Chart-Seiten in 2:15 min → **49.158 Ränge**, 42 Kategorien, je 200 tief |
 | refresh-ios | 4.000 Apps in 72 s (20 Requests); im Chart-Store nachgeschlagen: 402 von 560 fehlenden gefunden |
 | refresh-android | 30 Detailseiten in 59 s, alle mit exakter Installationszahl |
+
+## Schätzmodell v0
+
+`estimates` (Code und Parameter in `appcrawl/estimates.py`, Hintergrund in
+[`docs/research/04-schaetzmodelle.md`](../docs/research/04-schaetzmodelle.md) §2–3 und §9):
+
+| Downloads aus | Wie | Konfidenz |
+|---|---|---|
+| US-Gesamtchart (iPhone, Top Free/Paid) | Rangkurve mit Literaturwerten (Platz 1 ≈ 156.000/Tag, Top 10 ≈ 50.000/Tag) | mittel |
+| US-Kategorie-Chart | Kurve × Skalierung pro Kategorie, gelernt an Apps, die auch im Gesamtchart stehen | niedrig |
+| Bewertungszuwachs (iOS, US-Store) | × Downloads je Bewertung, gelernt an Chart-Apps (Startwert 67) | niedrig |
+| Installationszähler (Android) | gemessen | mittel |
+
+Umsatz = Downloads × 30 × Erlös pro Download je Monetarisierung (Abo ~1,20 $ skaliert mit dem Abo-Preis, IAP ~0,50 $,
+Kauf-App = Preis, gratis ohne IAP = 0; Android × 0,35). Werte sind **Spannen** und im UI als „früh“ markiert.
+**Grenzen von v0:** iOS nur US-Store; Apps, deren Abo ein Nebengeschäft ist (Amazon, Google Maps), werden überschätzt,
+große Abo-Apps (ChatGPT) eher unterschätzt; Werbeeinnahmen fehlen. Abhilfe bringt vor allem der Top-Grossing-Chart
+(Opt-in, nach Anwaltsfreigabe) und echte Vergleichswerte zur Kalibrierung.
 
 ## Wichtige Hinweise
 

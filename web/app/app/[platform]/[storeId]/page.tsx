@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { AppIcon, Card, PlatformBadge, RankBadge, Skeleton, Stat } from "@/components/ui";
+import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton, Stat } from "@/components/ui";
 import { CHARTS, DEVICES, countryName, genreName } from "@/lib/catalog";
-import { displayName, formatCompact, formatDate, formatNumber, formatPrice, storeUrl } from "@/lib/format";
+import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPrice, formatUsd, storeUrl } from "@/lib/format";
 import { appDetail } from "@/lib/queries";
 
 export default function AppPage({ params }: PageProps<"/app/[platform]/[storeId]">) {
@@ -23,7 +23,7 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
   if (platform !== "ios" && platform !== "android") notFound();
   const detail = await appDetail(platform, decodeURIComponent(storeId));
   if (!detail) notFound();
-  const { app, ranks, metrics, siblings } = detail;
+  const { app, ranks, metrics, siblings, estimate, monetization, iaps } = detail;
   const name = displayName(app.name, app.slug, app.store_id);
 
   return (
@@ -77,6 +77,66 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
+        <Card
+          title="Downloads und Umsatz (Schätzung)"
+          aside={estimate ? <span className="text-xs text-muted">Modell {estimate.model_version} · {formatDate(estimate.day)}</span> : null}
+        >
+          {!estimate ? (
+            <p className="px-4 py-6 text-sm text-muted">
+              Noch keine Schätzung. Dafür braucht die App einen Chart-Platz im US App Store oder Messwerte von mindestens
+              zwei Tagen (iOS: Bewertungen im US-Store, Android: Installationen).
+            </p>
+          ) : (
+            <div className="space-y-4 px-4 py-4">
+              <div className="grid grid-cols-2 gap-3">
+                <EstimateStat label="Downloads pro Tag" value={formatEstimate(estimate.downloads_p50)}
+                  range={`${formatEstimate(estimate.downloads_p10)} – ${formatEstimate(estimate.downloads_p90)}`}
+                  confidence={estimate.confidence} />
+                <EstimateStat label="Umsatz pro Monat (brutto)"
+                  value={estimate.revenue_p50 == null ? "–" : formatUsd(estimate.revenue_p50)}
+                  range={estimate.revenue_p50 == null ? "Monetarisierung noch unbekannt"
+                    : `${formatUsd(estimate.revenue_p10)} – ${formatUsd(estimate.revenue_p90)} · netto ≈ ${formatUsd(estimate.revenue_net_p50)}`}
+                  confidence={estimate.revenue_p50 == null ? null : estimate.confidence} />
+              </div>
+              <p className="text-xs leading-relaxed text-muted">
+                {METHOD_TEXT[estimate.download_method] ?? estimate.download_method}{" "}
+                {estimate.scope === "us" ? "Gilt nur für den US App Store." : "Weltweit."}{" "}
+                {estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
+                Spanne = P10 bis P90. Werbeeinnahmen sind nicht enthalten. Methodik: docs/research/04-schaetzmodelle.md.
+              </p>
+            </div>
+          )}
+        </Card>
+
+        <Card
+          title="In-App-Käufe"
+          aside={monetization ? <span className="text-xs text-muted">{monetization.country === "ww" ? "Google Play" : `Store ${monetization.country.toUpperCase()}`} · {formatDate(monetization.fetched_at)}</span> : null}
+        >
+          {!monetization ? (
+            <p className="px-4 py-6 text-sm text-muted">Noch nicht erfasst. Die Preisliste wird für wichtige Apps wöchentlich gelesen.</p>
+          ) : (
+            <div className="px-4 py-3">
+              <p className="pb-2 text-sm">
+                <span className="font-medium">{MODEL_LABEL[monetization.model] ?? monetization.model}</span>
+                {monetization.sub_annual_price ? <span className="text-muted"> · Abo ≈ {formatPrice(monetization.sub_annual_price, monetization.currency)} pro Jahr</span> : null}
+                {monetization.country === "ww" && monetization.iap_min ? <span className="text-muted"> · {formatPrice(monetization.iap_min, monetization.currency)} – {formatPrice(monetization.iap_max, monetization.currency)} pro Artikel</span> : null}
+              </p>
+              {iaps.length ? (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {iaps.map((iap) => (
+                      <tr key={iap.position} className="border-t border-border">
+                        <td className="py-1.5 pr-3">{iap.name}</td>
+                        <td className="py-1.5 text-right tabular-nums">{formatPrice(iap.price, iap.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+          )}
+        </Card>
+
         <Card title="Chart-Platzierungen" aside={<span className="text-xs text-muted">letzter erfasster Tag</span>}>
           {ranks.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted">In keinem der erfassten Charts.</p>
@@ -144,6 +204,42 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
         </dl>
       </Card>
     </>
+  );
+}
+
+const METHOD_TEXT: Record<string, string> = {
+  chart: "Downloads aus dem Platz in den US-Gesamtcharts (Top Free/Paid, Median der letzten 3 Tage) über eine Rangkurve mit Literaturwerten.",
+  "chart-category": "Downloads aus dem Platz in einem US-Kategorie-Chart, skaliert über Apps, die zugleich in den Gesamtcharts stehen.",
+  ratings: "Downloads aus dem Zuwachs der Bewertungen im US-Store, umgerechnet mit dem Verhältnis Downloads je Bewertung der Chart-Apps.",
+  installs: "Downloads gemessen: tägliche Zunahme der exakten Installationszahl auf Google Play.",
+};
+
+const MONETIZATION_TEXT: Record<string, string> = {
+  subscription: "Umsatz über einen Erlös pro Download für Abo-Apps (Benchmark RevenueCat), angepasst an den Abo-Preis.",
+  iap: "Umsatz über einen Erlös pro Download für In-App-Käufe, angepasst an das Preisniveau.",
+  paid: "Umsatz = Downloads × Kaufpreis.",
+  free: "Keine In-App-Käufe und kein Kaufpreis: kein Store-Umsatz.",
+};
+
+const MODEL_LABEL: Record<string, string> = {
+  subscription: "Abo",
+  iap: "In-App-Käufe",
+  paid: "Kauf-App",
+  free: "Kostenlos ohne In-App-Käufe",
+};
+
+function EstimateStat({ label, value, range, confidence }: {
+  label: string; value: string; range: string; confidence: "low" | "medium" | "high" | null;
+}) {
+  return (
+    <div className="rounded-lg bg-surface-2 px-3 py-2">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="mt-0.5 flex items-center gap-2 text-xl font-semibold tracking-tight">
+        {value}
+        <ConfidenceBadge confidence={confidence} />
+      </div>
+      <div className="mt-0.5 text-xs text-muted">{range}</div>
+    </div>
   );
 }
 

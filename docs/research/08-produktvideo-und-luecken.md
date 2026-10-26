@@ -119,7 +119,7 @@ Abgleich der Video-Funktionen mit dem Prototyp in `web/` (Stand dieses Branches:
    Sparkline aus `app_metrics_daily`.
 3. **App-Detail:** Store-Screenshots und IAP-Preise anzeigen (Daten aus Lookup bzw. Detailseite).
 4. **Schätzmodell v0** mit Spannen [04 §9]; erst danach Umsatz-/Download-Spalten und -Filter. Spannen und Konfidenz
-   bleiben unser Unterschied zu den Punktwerten im Video.
+   bleiben unser Unterschied zu den Punktwerten im Video. *Umgesetzt am 26.10.2026: `refresh-iap` (IAP-Preise), `estimates`, Spalten/Filter im Explorer, Karte im App-Detail. Siehe `crawler/README.md`, Abschnitt Schätzmodell v0.*
 5. **Apple Ad Repository** als erste Ads-Quelle (öffentlich, liefert `appId`), danach Meta Ad Library.
 
 ---
