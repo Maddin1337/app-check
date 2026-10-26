@@ -1,119 +1,75 @@
-"""SQLite storage for the catalog extract.
+"""Postgres access: connection, migrations, partitions and the app-key upsert.
 
-SQLite keeps the extract self-contained and resumable on any machine. The tables mirror
-the Postgres schema in docs/research/03-datenbank-aufbau.md §10 closely enough that
-`export` produces CSV files for a later `COPY` into Postgres.
+Connection string: DATABASE_URL (default: local socket, database 'appcrawl').
 """
 
-import sqlite3
-from datetime import datetime, timezone
+import os
+from datetime import date
+from pathlib import Path
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS sitemap_files (
-  url         TEXT PRIMARY KEY,
-  platform    TEXT NOT NULL,              -- 'ios' | 'android'
-  kind        TEXT NOT NULL,              -- 'app' | 'new-app' | 'play'
-  status      INTEGER,                    -- HTTP status, NULL = pending
-  bytes       INTEGER,                    -- uncompressed size
-  urls        INTEGER,                    -- <loc> entries in the file
-  apps        INTEGER,                    -- distinct apps found
-  fetched_at  TEXT,
-  error       TEXT
-);
+import psycopg
 
-CREATE TABLE IF NOT EXISTS app_keys (
-  platform       TEXT NOT NULL,
-  store_id       TEXT NOT NULL,           -- iOS trackId, Android package name
-  slug           TEXT,                    -- iOS URL slug (readable name hint)
-  storefronts    INTEGER,                 -- iOS: storefront URLs in the sitemap (a hint, not availability)
-  discovered_via TEXT NOT NULL,           -- 'sitemap:app', 'sitemap:new-app', 'sitemap:play'
-  first_seen_at  TEXT NOT NULL,
-  last_seen_at   TEXT NOT NULL,
-  enrich_status  TEXT,                    -- NULL = pending, 'ok', 'not_found', 'error'
-  enriched_at    TEXT,
-  PRIMARY KEY (platform, store_id)
-);
-CREATE INDEX IF NOT EXISTS app_keys_enrich ON app_keys (platform, enrich_status);
-
-CREATE TABLE IF NOT EXISTS ios_apps (
-  track_id                     INTEGER PRIMARY KEY,
-  country                      TEXT NOT NULL,
-  name                         TEXT,
-  bundle_id                    TEXT,
-  artist_id                    INTEGER,
-  artist_name                  TEXT,
-  seller_name                  TEXT,
-  primary_genre_id             INTEGER,
-  primary_genre                TEXT,
-  genre_ids                    TEXT,      -- JSON array
-  price                        REAL,
-  currency                     TEXT,
-  rating_avg                   REAL,
-  rating_count                 INTEGER,
-  released_at                  TEXT,
-  current_version_released_at  TEXT,
-  version                      TEXT,
-  content_rating               TEXT,
-  size_bytes                   INTEGER,
-  min_os                       TEXT,
-  languages                    TEXT,      -- JSON array
-  icon_url                     TEXT,
-  seller_url                   TEXT,
-  store_url                    TEXT,
-  fetched_at                   TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS android_apps (
-  package             TEXT PRIMARY KEY,
-  country             TEXT NOT NULL,
-  name                TEXT,
-  developer           TEXT,
-  developer_id        TEXT,
-  developer_domain    TEXT,               -- domain only; no e-mail/address (GDPR minimisation)
-  genre_id            TEXT,
-  genre               TEXT,
-  free                INTEGER,
-  price               REAL,
-  currency            TEXT,
-  offers_iap          INTEGER,
-  iap_price_range     TEXT,
-  contains_ads        INTEGER,
-  installs_bucket     INTEGER,            -- minInstalls
-  installs_exact      INTEGER,            -- realInstalls
-  rating_avg          REAL,
-  rating_count        INTEGER,
-  review_count        INTEGER,
-  released            TEXT,
-  updated_at          TEXT,
-  version             TEXT,
-  content_rating      TEXT,
-  icon_url            TEXT,
-  fetched_at          TEXT NOT NULL
-);
-"""
+DEFAULT_DSN = "postgresql:///appcrawl"
+MIGRATIONS = Path(__file__).with_name("migrations")
 
 
-def now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def connect(dsn: str | None = None) -> psycopg.Connection:
+    return psycopg.connect(dsn or os.environ.get("DATABASE_URL", DEFAULT_DSN))
 
 
-def connect(path: str) -> sqlite3.Connection:
-    connection = sqlite3.connect(path, timeout=60)  # discovery and enrichment may run side by side
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("PRAGMA synchronous=NORMAL")
-    connection.executescript(SCHEMA)
-    return connection
-
-
-def upsert_app_keys(connection: sqlite3.Connection, platform: str, source: str, apps: dict) -> None:
-    """apps maps store_id -> (slug, storefronts)."""
-    seen = now()
-    connection.executemany(
-        """INSERT INTO app_keys (platform, store_id, slug, storefronts, discovered_via, first_seen_at, last_seen_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (platform, store_id) DO UPDATE SET
-             last_seen_at = excluded.last_seen_at,
-             slug = COALESCE(app_keys.slug, excluded.slug),
-             storefronts = MAX(COALESCE(app_keys.storefronts, 0), COALESCE(excluded.storefronts, 0))""",
-        [(platform, store_id, slug, storefronts, source, seen, seen) for store_id, (slug, storefronts) in apps.items()],
+def migrate(connection: psycopg.Connection) -> list[str]:
+    """Applies pending migrations/*.sql in order, each in its own transaction."""
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())"
     )
+    connection.commit()
+    applied = {v for (v,) in connection.execute("SELECT version FROM schema_migrations")}
+    connection.commit()
+    done = []
+    for path in sorted(MIGRATIONS.glob("*.sql")):
+        if path.stem in applied:
+            continue
+        try:
+            connection.execute(path.read_text())
+            connection.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.stem,))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        done.append(path.stem)
+    return done
+
+
+def ensure_month_partition(connection: psycopg.Connection, table: str, day: date) -> None:
+    """Creates the monthly partition holding `day` (rows already in the default partition stay there)."""
+    start = day.replace(day=1)
+    end = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
+    name = f"{table}_{start:%Y_%m}"
+    try:
+        with connection.transaction():
+            connection.execute(
+                f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {table} FOR VALUES FROM ('{start}') TO ('{end}')"
+            )
+    except psycopg.errors.CheckViolation:
+        pass  # the default partition already holds rows of this month
+
+
+def upsert_app_keys(connection: psycopg.Connection, platform: str, source: str, apps: dict) -> None:
+    """apps maps store_id -> (slug, name). Existing apps only get last_seen_at and missing hints filled."""
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            """INSERT INTO apps (platform, store_id, slug, name, discovered_via)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (platform, store_id) DO UPDATE SET
+                 last_seen_at = now(),
+                 slug = COALESCE(apps.slug, excluded.slug),
+                 name = COALESCE(apps.name, excluded.name)""",
+            [(platform, store_id, slug, name, source) for store_id, (slug, name) in apps.items()],
+        )
+
+
+def app_ids(connection: psycopg.Connection, platform: str, store_ids: list[str]) -> dict[str, int]:
+    rows = connection.execute(
+        "SELECT store_id, id FROM apps WHERE platform = %s AND store_id = ANY(%s)", (platform, store_ids)
+    )
+    return dict(rows.fetchall())

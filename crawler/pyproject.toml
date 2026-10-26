@@ -1,0 +1,22 @@
+[project]
+name = "appcrawl"
+version = "0.2.0"
+description = "Complete App Store / Google Play catalog and daily time series from primary sources"
+requires-python = ">=3.10"
+dependencies = ["psycopg[binary]>=3.2"]
+
+[project.optional-dependencies]
+android = ["google-play-scraper>=1.2.7"]
+
+[project.scripts]
+appcrawl = "appcrawl.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["appcrawl*"]
+
+[tool.setuptools.package-data]
+appcrawl = ["migrations/*.sql"]

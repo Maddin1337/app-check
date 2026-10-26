@@ -133,10 +133,10 @@ MCP-Server lesen aus denselben Speichern [03 §8].
 | Crawler, Parser, Schätzungen, LLM-Jobs | **Python 3.12+** (httpx async, selectolax/lxml, orjson; pandas, statsmodels, LightGBM) | Eine Sprache für Crawling **und** Modellierung. Alternative für reine Fetcher: Go [03 §14] |
 | Queue | **Postgres-Queue** (Procrastinate oder eigene `crawl_targets`-Tabelle mit `SKIP LOCKED`) | Kein Zusatzdienst. Bei ~6 Requests/s reicht das dauerhaft [03 §8.3] |
 | OLTP-Datenbank | **PostgreSQL 17** + `pg_trgm` | Stammdaten, Nutzer, Mapping-Tabellen, Queue [03 §8.7] |
-| Zeitreihen | **ClickHouse** | Milliarden Zeilen, schnelle Aggregationen (Top-Gainer, Wachstum). Alternative: TimescaleDB, wenn eine einzige DB gewünscht ist [03 §8.7] |
+| Zeitreihen | **Zum Start: Postgres, monatlich partitioniert.** Später **ClickHouse**, wenn Volumen oder Auswertungen es verlangen | Entscheidung vom 26.10.2026: eine Datenbank weniger im Betrieb; Charts und tägliche Messwerte für 40 Märkte passen anfangs gut in Postgres. ClickHouse lohnt sich ab etwa einer Milliarde Zeilen oder für schnelle Ad-hoc-Auswertungen [03 §8.7] |
 | Suche | **Postgres-Indizes im MVP**, **Typesense** ab Phase 2 | Filterliste funktioniert mit B-Tree auf `app_search`; Typesense für Instant-Suche mit Tippfehler-Toleranz [03 §8.7] |
 | Object Storage + Medien | **Cloudflare R2** (kein Egress) + progressives MP4/WebP | AppKittie nutzt ebenfalls R2 für Videos [05 §1, §5] |
-| Hosting Daten | **Dedizierter Server** (z. B. Hetzner AX-Klasse) für Postgres + ClickHouse, 2–4 VMs für Worker | Laufende Kosten ~€500–700/Monat [03 §9.4] |
+| Hosting Daten | **Dedizierter Server** (z. B. Hetzner AX-Klasse) für Postgres (später + ClickHouse), 2–4 VMs für Worker | Laufende Kosten ~€500–700/Monat [03 §9.4] |
 | Hosting Web | Vercel oder selbst gehostet (Coolify o. ä.) | Vercel für schnellen Start; später Kosten prüfen |
 | Auth | Better Auth (selbst gehostet) oder Auth.js | Login per E-Mail-Link + Google/Apple. AppKittie: Auth.js v5 + Magic Link über Resend [02] |
 | Billing | **Stripe** mit fairer Trial-Logik | Abbuchung erst nach Trial-Ende + Erinnerungsmail. Genau hier hat AppKittie Beschwerden [06 §1] |
@@ -164,6 +164,8 @@ Die Detail-Schemata stehen in den Fachdokumenten. Hier die Gesamtsicht, wer welc
 | ASO | `keyword_popularity`, `keyword_rank` | ClickHouse | [04 §9.4] |
 | Crawling | `crawl_targets` (Fälligkeit, Tier, Fehler, Hash) | Postgres | [03 §10.1] |
 | Produkt/Konto | `users`, `teams`, `subscriptions`, `watchlists`, `alerts`, `api_keys`, `api_usage` | Postgres | neu (Phase 2) |
+
+**Umsetzungsstand (26.10.2026):** Katalog, Charts und tägliche Messwerte sind im Werkzeug `crawler/` umgesetzt (Schema `crawler/appcrawl/migrations/0001_init.sql`). Die in der Tabelle mit ClickHouse markierten Zeitreihen liegen zum Start in partitionierten Postgres-Tabellen.
 
 **Schlüssel-Entscheidung:** `apps.id` ist die interne ID für alles. `products` verbindet iOS- und Android-Variante
 derselben App (über `bundle_id` = Paketname, Entwickler-Domain, manuell) [03 §10.1, 04 §2]. Die
@@ -203,7 +205,7 @@ abhängen [05 §9 Nr. 3].
 - **Name und Marke:** Namensideen sammeln, EUIPO/DPMA/USPTO-Recherche, Domain sichern [06 §4].
 - **Zugänge beantragen, die Vorlauf brauchen:** Meta-Identitätsprüfung für die Ad Library API, Antrag TikTok
   Commercial Content API, Apple-Ads-Account mit API-Rolle, Google-Cloud-Projekt für YouTube [05 §9, 04 §5].
-- **Infrastruktur:** Server, Postgres, ClickHouse, R2, Monitoring, Repo-Struktur.
+- **Infrastruktur:** Server, Postgres, R2, Monitoring, Repo-Struktur (ClickHouse erst bei Bedarf).
 
 ### Phase 1 – Datenfundament (Wochen 1–2)
 - **Tag 1: Chart-Collector live** (Apple Web-Charts, Legacy-RSS Grossing, Play-Kategorieseiten), mehrmals täglich.
@@ -211,7 +213,7 @@ abhängen [05 §9 Nr. 3].
 - iOS-Vollkatalog über Lookup (Batch 200); Web-Detail für die Top ~60k.
 - Metrik-Zeitreihen starten: iOS-Ratings pro Storefront, Android `realInstalls`.
 - Parser mit Fixture-Tests und Canary, Raw-Archiv.
-- **Ergebnis:** ≥ 95 % der iOS-IDs mit Status, Charts täglich in ClickHouse [03 §11].
+- **Ergebnis:** ≥ 95 % der iOS-IDs mit Status, Charts täglich in Postgres [03 §11].
 
 ### Phase 2 – Vollkatalog + erste Oberfläche (Wochen 3–5)
 - Play-Detail-Vollpass (~4 Mio. URLs, Tier-Scheduler, IP-Pool), tote Apps markieren.

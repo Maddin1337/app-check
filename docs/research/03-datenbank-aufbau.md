@@ -1229,6 +1229,8 @@ Der komplette Auszug ist als Werkzeug im Repo umgesetzt: [`crawler/`](../../craw
 | Android Discovery, Stichprobe 150 von 86.990 Sitemaps | 6.813 Apps, 45,4 pro Datei → **~3,95 Mio. App-URLs** |
 | iOS Lookup, 2.000 Apps | 10 Requests in 33 s, 93 % im US-Store gefunden |
 | Android Detailseiten, 80 Apps | 158 s bei 0,5 Requests/s, 89 % verfügbar, exakte Installationszahl bei allen |
+| iOS-Charts US + DE + GB (Apple-Chart-Seiten) | 126 Seiten in 2:15 min → 49.158 Ränge, 42 Kategorien, je 200 tief |
+| Import der 1,88 Mio. iOS-Apps nach Postgres | 62 s |
 
 **Neue Befunde aus der Umsetzung [beobachtet]:**
 - Die `.xml.gz`-Sitemaps beider Stores kommen **doppelt gzip-komprimiert** (Content-Encoding plus gz-Datei).
@@ -1236,6 +1238,10 @@ Der komplette Auszug ist als Werkzeug im Repo umgesetzt: [`crawler/`](../../craw
   TLS-Zertifikatsprüfung** (`ssl._create_default_https_context = ssl._create_unverified_context`). Wir nutzen nur
   ihren Parser und stellen die Prüfung wieder her.
 - Der Play-Sitemap-Index wuchs innerhalb eines Tages von 86.927 auf 86.990 Dateien (neues Datum im Dateinamen).
+
+**Google Play hat keine Chart-Listen im HTML [beobachtet]:** Die Kategorie-Seiten enthalten nur die Tab-Definitionen (`apps_topselling_free`, `apps_topgrossing`, `apps_topselling_paid`); die Listen lädt die Seite über das per robots.txt gesperrte `batchexecute` nach. Für Android ersetzt deshalb die tägliche exakte Installationszahl die Ränge.
+
+**Speicher:** Das Werkzeug schreibt inzwischen direkt nach Postgres (Katalog, `chart_ranks`, `app_metrics_daily`, monatlich partitioniert) und plant Aktualisierungen über Tiers (§ 8.3). Zeitplan für den Server: `crawler/deploy/crontab.example`.
 
 **Engpass bestätigt:** Android-Detailseiten. 3,95 Mio. Seiten bei 0,5/s sind ~90 Tage auf einer IP. Für einen
 Vollpass in einer Woche braucht es ~15–20 IPs oder eine höhere, noch zu messende Rate pro IP, plus

@@ -7,9 +7,10 @@ Only <loc> entries are read; the hreflang alternates repeat the same app.
 """
 
 import re
-import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import psycopg
 
 from . import db
 from .http import FetchError, RateLimiter, fetch
@@ -21,19 +22,18 @@ APPLE_APP = re.compile(rb"^https://apps\.apple\.com/([a-z]{2})/app/(?:([^/]*)/)?
 PLAY_APP = re.compile(rb"^https://play\.google\.com/store/apps/details\?id=([A-Za-z0-9._]+)$")
 
 
-def sitemap_indexes(platform: str, robots: str) -> dict[str, str]:
-    """Maps index URL -> kind for the sitemap indexes we use, as listed in robots.txt."""
+def sitemap_indexes(platform: str, robots: str, kinds: tuple[str, ...] = ("app", "new-app", "play")) -> dict[str, str]:
+    """Maps index URL -> kind for the sitemap indexes listed in robots.txt."""
+    patterns = {"app": "_index_app_", "new-app": "_index_new-app_", "chart": "_index_chart_", "play": "/sitemaps-index-"}
+    wanted = {"ios": ("app", "new-app", "chart"), "android": ("play",)}[platform]
     indexes = {}
     for line in robots.splitlines():
         if not line.lower().startswith("sitemap:"):
             continue
         url = line.split(":", 1)[1].strip()
-        if platform == "ios" and "_index_app_" in url:
-            indexes[url] = "app"
-        elif platform == "ios" and "_index_new-app_" in url:
-            indexes[url] = "new-app"
-        elif platform == "android" and "/sitemaps-index-" in url:
-            indexes[url] = "play"
+        for kind in wanted:
+            if kind in kinds and patterns[kind] in url:
+                indexes[url] = kind
     return indexes
 
 
@@ -68,49 +68,60 @@ def parse_play_urlset(body: bytes) -> tuple[int, dict]:
     return len(locs), apps
 
 
-def refresh_file_list(connection: sqlite3.Connection, platform: str, limiter: RateLimiter, include_new: bool) -> None:
-    """Reads robots.txt and the sitemap indexes, and registers child sitemaps as pending."""
+def child_sitemaps(platform: str, kinds: tuple[str, ...], limiter: RateLimiter) -> dict[str, str]:
+    """Reads robots.txt and the matching sitemap indexes; returns child sitemap URL -> kind."""
     status, robots = fetch(ROBOTS[platform], limiter)
     if status != 200:
         raise FetchError(ROBOTS[platform], f"HTTP {status}")
-    indexes = sitemap_indexes(platform, robots.decode("utf-8", "replace"))
-    if not include_new:
-        indexes = {url: kind for url, kind in indexes.items() if kind != "new-app"}
+    indexes = sitemap_indexes(platform, robots.decode("utf-8", "replace"), kinds)
     if not indexes:
-        raise FetchError(ROBOTS[platform], "no sitemap index found in robots.txt")
-
-    current = set()
+        raise FetchError(ROBOTS[platform], f"no {'/'.join(kinds)} sitemap index in robots.txt")
+    children = {}
     for index_url, kind in indexes.items():
         status, body = fetch(index_url, limiter)
         if status != 200:
             raise FetchError(index_url, f"HTTP {status}")
-        children = [loc.decode() for loc in parse_locs(body)]
-        current.update(children)
-        connection.executemany(
-            "INSERT OR IGNORE INTO sitemap_files (url, platform, kind) VALUES (?, ?, ?)",
-            [(url, platform, kind) for url in children],
-        )
-        print(f"{index_url}: {len(children)} sitemaps ({kind})", file=sys.stderr)
+        found = [loc.decode() for loc in parse_locs(body)]
+        children.update(dict.fromkeys(found, kind))
+        print(f"{index_url}: {len(found)} sitemaps ({kind})", file=sys.stderr)
+    return children
 
-    # Play regenerates its sitemaps under dated names; pending URLs from an older index would 404.
-    stale = [
-        (url,)
-        for (url,) in connection.execute(
-            "SELECT url FROM sitemap_files WHERE platform = ? AND status IS NULL", (platform,)
+
+def refresh_file_list(
+    connection: psycopg.Connection, platform: str, kinds: tuple[str, ...], limiter: RateLimiter, rescan: bool
+) -> None:
+    """Registers the current child sitemaps and forgets those no longer listed.
+
+    Play regenerates its sitemaps daily under dated names, so every new index is a fresh scan.
+    Apple keeps its file names; --rescan marks them pending again to pick up apps added since.
+    """
+    children = child_sitemaps(platform, kinds, limiter)
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            "INSERT INTO sitemap_files (url, platform, kind) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+            [(url, platform, kind) for url, kind in children.items()],
         )
-        if url not in current
-    ]
-    connection.executemany("DELETE FROM sitemap_files WHERE url = ?", stale)
+    dropped = connection.execute(
+        "DELETE FROM sitemap_files WHERE platform = %s AND kind = ANY(%s) AND NOT url = ANY(%s)",
+        (platform, list(kinds), list(children)),
+    ).rowcount
+    if rescan:
+        connection.execute(
+            "UPDATE sitemap_files SET status = NULL, error = NULL WHERE platform = %s AND kind = ANY(%s)",
+            (platform, list(kinds)),
+        )
     connection.commit()
-    if stale:
-        print(f"dropped {len(stale)} pending sitemaps no longer listed in the index", file=sys.stderr)
+    if dropped:
+        print(f"forgot {dropped} sitemaps no longer listed in the index", file=sys.stderr)
 
 
-def pending_files(connection: sqlite3.Connection, platform: str, limit: int | None, sample: int | None) -> list:
+def pending_files(
+    connection: psycopg.Connection, platform: str, kinds: tuple[str, ...], limit: int | None, sample: int | None
+) -> list:
     rows = connection.execute(
-        "SELECT url, kind FROM sitemap_files WHERE platform = ? AND (status IS NULL OR status NOT IN (200, 404)) "
-        "ORDER BY url",
-        (platform,),
+        "SELECT url, kind FROM sitemap_files WHERE platform = %s AND kind = ANY(%s) "
+        "AND (status IS NULL OR status NOT IN (200, 404)) ORDER BY url",
+        (platform, list(kinds)),
     ).fetchall()
     if sample and sample < len(rows):
         step = len(rows) / sample
@@ -130,18 +141,26 @@ def _process(platform: str, url: str, limiter: RateLimiter):
 
 
 def discover(
-    connection: sqlite3.Connection,
+    connection: psycopg.Connection,
     platform: str,
     rate: float,
     workers: int,
     limit: int | None = None,
     sample: int | None = None,
     include_new: bool = True,
+    only_new: bool = False,
+    rescan: bool = False,
 ) -> None:
+    if platform == "android":
+        kinds: tuple[str, ...] = ("play",)
+    else:
+        kinds = ("new-app",) if only_new else ("app", "new-app") if include_new else ("app",)
     limiter = RateLimiter(rate)
-    refresh_file_list(connection, platform, limiter, include_new)
-    files = pending_files(connection, platform, limit, sample)
-    total = connection.execute("SELECT COUNT(*) FROM sitemap_files WHERE platform = ?", (platform,)).fetchone()[0]
+    refresh_file_list(connection, platform, kinds, limiter, rescan)
+    files = pending_files(connection, platform, kinds, limit, sample)
+    total = connection.execute(
+        "SELECT COUNT(*) FROM sitemap_files WHERE platform = %s AND kind = ANY(%s)", (platform, list(kinds))
+    ).fetchone()[0]
     print(f"{platform}: {len(files)} of {total} sitemaps to fetch", file=sys.stderr)
 
     done = 0
@@ -155,16 +174,14 @@ def discover(
             except FetchError as failure:
                 status, size, locs, apps, error = None, None, None, {}, failure.reason
             if apps:
-                db.upsert_app_keys(connection, platform, f"sitemap:{kind}", apps)
+                db.upsert_app_keys(connection, platform, f"sitemap:{kind}", {k: (slug, None) for k, (slug, _) in apps.items()})
             connection.execute(
-                "UPDATE sitemap_files SET status = ?, bytes = ?, urls = ?, apps = ?, fetched_at = ?, error = ? "
-                "WHERE url = ?",
-                (status, size, locs, len(apps), db.now(), error, url),
+                "UPDATE sitemap_files SET status = %s, bytes = %s, urls = %s, apps = %s, fetched_at = now(), error = %s "
+                "WHERE url = %s",
+                (status, size, locs, len(apps), error, url),
             )
             connection.commit()
             done += 1
             if done % 25 == 0 or done == len(files):
-                keys = connection.execute(
-                    "SELECT COUNT(*) FROM app_keys WHERE platform = ?", (platform,)
-                ).fetchone()[0]
+                keys = connection.execute("SELECT COUNT(*) FROM apps WHERE platform = %s", (platform,)).fetchone()[0]
                 print(f"{platform}: {done}/{len(files)} sitemaps, {keys:,} distinct apps", file=sys.stderr)

@@ -1,0 +1,23 @@
+# appcrawl schedule (UTC). Install with: crontab -e
+# Assumes the repo in /opt/app-check, a venv in /opt/app-check/crawler/.venv and DATABASE_URL below.
+# flock -n skips a run while the previous one of the same job is still going.
+
+DATABASE_URL=postgresql:///appcrawl
+APP=/opt/app-check/crawler
+PY=/opt/app-check/crawler/.venv/bin/python
+LOG=/var/log/appcrawl
+
+# Charts first: the time series must not miss a day. ~30 min for 40 storefronts.
+5 1 * * *   cd $APP && flock -n /tmp/appcrawl-charts.lock $PY -m appcrawl charts >> $LOG/charts.log 2>&1 && $PY -m appcrawl plan-tiers >> $LOG/tiers.log 2>&1
+
+# iOS: the whole catalog every day via Lookup (~8–9 h at 20 requests/min), then apps missing in the US store.
+15 2 * * *  cd $APP && flock -n /tmp/appcrawl-ios.lock sh -c "$PY -m appcrawl refresh-ios && $PY -m appcrawl refresh-ios --missing --country de" >> $LOG/refresh-ios.log 2>&1
+
+# Android: work through due detail pages around the clock; each run stops when nothing is due.
+*/30 * * * * cd $APP && flock -n /tmp/appcrawl-android.lock $PY -m appcrawl refresh-android --limit 20000 >> $LOG/refresh-android.log 2>&1
+
+# Discovery of new apps: iOS new-app sitemaps daily, full iOS rescan weekly, Android weekly (~24 h;
+# Play's sitemaps get new names daily, so every run is a full scan).
+40 0 * * 1-6 cd $APP && flock -n /tmp/appcrawl-discover-ios.lock $PY -m appcrawl discover ios --only-new --rescan >> $LOG/discover.log 2>&1
+40 0 * * 0   cd $APP && flock -n /tmp/appcrawl-discover-ios.lock $PY -m appcrawl discover ios --rescan >> $LOG/discover.log 2>&1
+0 3 * * 0    cd $APP && flock -n /tmp/appcrawl-discover-android.lock $PY -m appcrawl discover android --rate 1 >> $LOG/discover.log 2>&1
