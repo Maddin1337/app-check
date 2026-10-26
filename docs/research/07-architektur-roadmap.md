@@ -125,7 +125,9 @@ MCP-Server lesen aus denselben Speichern [03 §8].
 
 | Bereich | Empfehlung | Begründung / Alternative |
 |---|---|---|
-| Web-Frontend | **Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, TanStack Table, ECharts oder Recharts** | Bewährt für datenlastige Dashboards. AppKittie nutzt ebenfalls Next.js [02]. Alternative: SvelteKit |
+| Web-Frontend | **Next.js (App Router) + TypeScript, Tailwind, shadcn/ui, TanStack Table, ECharts oder Recharts** | Bewährt für datenlastige Dashboards. AppKittie nutzt Next.js 16, Tailwind v4, shadcn/ui und Recharts [02]. Alternative: SvelteKit |
+| Interne API | **tRPC + Zod** (typisiert zwischen Web und Server) | AppKittie nutzt tRPC v11 mit 89 Prozeduren [02]. Für die öffentliche API zusätzlich REST |
+| Ähnliche Apps / Konkurrenzsuche | **pgvector** (Embeddings aus Name, Beschreibung, Kategorie) + optionale LLM-Prüfung | AppKittie macht die Competitor-Suche über Embeddings + LLM [02] |
 | Crawler, Parser, Schätzungen, LLM-Jobs | **Python 3.12+** (httpx async, selectolax/lxml, orjson; pandas, statsmodels, LightGBM) | Eine Sprache für Crawling **und** Modellierung. Alternative für reine Fetcher: Go [03 §14] |
 | Queue | **Postgres-Queue** (Procrastinate oder eigene `crawl_targets`-Tabelle mit `SKIP LOCKED`) | Kein Zusatzdienst. Bei ~6 Requests/s reicht das dauerhaft [03 §8.3] |
 | OLTP-Datenbank | **PostgreSQL 17** + `pg_trgm` | Stammdaten, Nutzer, Mapping-Tabellen, Queue [03 §8.7] |
@@ -134,10 +136,12 @@ MCP-Server lesen aus denselben Speichern [03 §8].
 | Object Storage + Medien | **Cloudflare R2** (kein Egress) + progressives MP4/WebP | AppKittie nutzt ebenfalls R2 für Videos [05 §1, §5] |
 | Hosting Daten | **Dedizierter Server** (z. B. Hetzner AX-Klasse) für Postgres + ClickHouse, 2–4 VMs für Worker | Laufende Kosten ~€500–700/Monat [03 §9.4] |
 | Hosting Web | Vercel oder selbst gehostet (Coolify o. ä.) | Vercel für schnellen Start; später Kosten prüfen |
-| Auth | Better Auth (selbst gehostet) oder Clerk | Login per E-Mail-Link + Google/Apple |
+| Auth | Better Auth (selbst gehostet) oder Auth.js | Login per E-Mail-Link + Google/Apple. AppKittie: Auth.js v5 + Magic Link über Resend [02] |
 | Billing | **Stripe** mit fairer Trial-Logik | Abbuchung erst nach Trial-Ende + Erinnerungsmail. Genau hier hat AppKittie Beschwerden [06 §1] |
 | LLM | Claude Haiku 5.5 (Batch) für Sentiment/Labeling, Sonnet 5.5 für schwierige Vision-Fälle | ~12 USD pro 1 Mio. Reviews im Batch [04 §6]; < $0,15 pro Onboarding-Flow [05 §4] |
-| Monitoring | Prometheus + Grafana, Sentry, Uptime-Checks | Canary-Parser-Alarme sind Pflicht [03 §8.8] |
+| Monitoring | Prometheus + Grafana, Sentry, Uptime-Checks | Canary-Parser-Alarme sind Pflicht [03 §8.8]. AppKittie hat kein sichtbares Error-Monitoring [02] |
+| Produkt-Analytics + Consent | PostHog (EU-Hosting) oder Simple Analytics; Werbe-Pixel nur nach Einwilligung; Security-Header (CSP, HSTS) | AppKittie setzt Pixel vor der Einwilligung und sendet keine Security-Header [02, 06 §2] |
+| Externe Schnittstellen | REST-API mit Credits + **MCP-Server mit echtem OAuth 2.1** | AppKittie nutzt einen vereinfachten OAuth-Ersatz (API-Key als Client-Secret) [02] |
 
 ---
 
