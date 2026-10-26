@@ -70,6 +70,7 @@ $PY -m appcrawl refresh-ios --missing --country de # nicht gefundene Apps im Cha
 $PY -m appcrawl refresh-android --limit 20000
 $PY -m appcrawl trends                             # Wachstum 7/30 Tage, braucht 2 Messtage
 $PY -m appcrawl refresh-iap --limit 8000           # IAP-Preise, wichtige iOS-Apps wöchentlich (~4,5 h)
+$PY -m appcrawl calibrate                          # Grossing-Kurve an Vergleichswerten eichen (data/ground_truth.csv)
 $PY -m appcrawl estimates                          # Downloads und Umsatz, Modell v0
 
 # Überblick, Export, Tests
@@ -112,7 +113,7 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 |---|---|---|
 | 00:40 | `discover ios --only-new --rescan` (sonntags voller Rescan) | Minuten (voll ~30 min) |
 | 01:05 | `charts --grossing-rss` + `plan-tiers` | ~1 h für 40 Märkte |
-| 02:15 | `refresh-ios`, danach `--missing`, dann `trends` und `estimates` | ~8–9 h für den ganzen Katalog, danach Minuten |
+| 02:15 | `refresh-ios`, danach `--missing`, dann `trends`, `calibrate` und `estimates` | ~8–9 h für den ganzen Katalog, danach Minuten |
 | 13:00 | `refresh-iap --limit 8000`, danach `estimates` | ~4,5 h bei 0,5 Seiten/s |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
 | So 03:00 | `discover android` | ~24 h bei 1/s |
@@ -147,8 +148,10 @@ Google vorsichtig ausmessen.
 
 Umsatz kommt aus zwei Wegen:
 
-- **A, Top-Grossing-Rang** (US iPhone, Gesamt- und Kategorie-Charts): Rangkurve, Platz 1 ≈ 2,5 Mio. $/Tag, β = 0,75.
-  Diese Startwerte sind **Annahmen** aus öffentlichen Größenordnungen und müssen an echten Umsätzen geeicht werden.
+- **A, Top-Grossing-Rang** (US iPhone, Gesamt- und Kategorie-Charts): Rangkurve mit β = 0,75. Die Skala eicht
+  `calibrate` an Vergleichswerten aus Geschäftsberichten (`appcrawl/data/ground_truth.csv`, Quelle und Annahmen je
+  Zeile); Startwert ohne Eichung: Platz 1 ≈ 2,5 Mio. $/Tag. Über dem bestplatzierten Anker ist der Wert
+  hochgerechnet: breitere Spanne, Konfidenz niedrig.
 - **B, Downloads × 30 × Erlös pro Download** je Monetarisierung (Abo ~1,20 $ skaliert mit dem Abo-Preis, IAP ~0,50 $,
   Kauf-App = Preis, gratis ohne IAP = 0; Android × 0,35). Die Startwerte werden zur Hälfte (logarithmisch) an die
   Grossing-Apps angeglichen (höchstens Faktor 2); die verdienen überdurchschnittlich, deshalb kein voller Ersatz.

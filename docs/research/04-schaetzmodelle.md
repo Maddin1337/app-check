@@ -849,6 +849,23 @@ ground_truth(app_id, country|WW, period_start, period_end, metric, value, gross_
 
 ---
 
+### 9.5 Erste Kalibrierung (26.10.2026)
+
+Umsetzung: `crawler/appcrawl/calibrate.py`, Vergleichswerte in `crawler/appcrawl/data/ground_truth.csv`.
+
+- **Anker:** sechs Apps mit berichtetem Umsatz Q2 2026 (Geschäftsberichte, je mit Quelle): Tinder, Hinge, Bumble,
+  Duolingo, Grindr, Life360. Umgerechnet auf den US App Store über Spannen für US-Anteil, iOS-Anteil und Anteil über
+  Apples In-App-Kauf **[A]**; die berichteten Umsätze selbst sind **[Q]**.
+- **Ergebnis:** Die angenommene Grossing-Kurve lag um **Faktor 3,84 zu niedrig**; neue Skala 9,6 Mio. $/Tag an Platz 1
+  (β = 0,75 fest). Reststreuung der Anker 0,45 (natürlicher Log, etwa Faktor 1,6).
+- **Hinweis auf die Steigung:** Nach der Eichung liegen die besser platzierten Anker über, die schlechter platzierten
+  unter ihrem Wert (Life360 Platz 20: 30 statt 14–24 Mio. $; Bumble Platz 75: 11 statt 15–30 Mio. $). Die Kurve ist
+  vermutlich flacher als β = 0,75. Sechs Punkte reichen nicht, um das von Rauschen zu trennen; β bleibt fest.
+- **Grenze:** Kein Anker oberhalb von Platz 20. Werte für Platz 1–19 sind Hochrechnung (z. B. ChatGPT Median
+  ~290 Mio. $/Monat, P10–P90 91–912 Mio. $) und laufen mit Konfidenz „niedrig“.
+- **Nächste Anker:** mehr Apps zwischen Platz 1 und 20 und unterhalb von Platz 75 (weitere Geschäftsberichte;
+  TrustMRR für kleine Apps, sobald Zugang und Nutzungsbedingungen geklärt sind). Ab etwa 15 Ankern β mitschätzen.
+
 ## 10. Roadmap zur Verbesserung
 
 1. **v0 (MVP):** parametrische Kurven, Präzisionsgewichtung, Literatur- und Benchmark-Priors, Android-`realInstalls`.

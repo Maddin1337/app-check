@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from appcrawl.charts import CHART_URL, parse_chart_page, parse_grossing_rss
 from appcrawl.discover import parse_apple_urlset, parse_locs, parse_play_urlset, sitemap_indexes
+from appcrawl.calibrate import anchor_range, fit_scale
 from appcrawl.estimates import curve, net_factor, rpd
 from appcrawl.iap import classify, parse_app_page, parse_price
 from appcrawl.refresh_android import _domain, _released
@@ -193,6 +194,21 @@ class EstimateModel(unittest.TestCase):
         self.assertLess(rpd("android", "iap", 0, None, 5), rpd("ios", "iap", 0, None, 5))
         self.assertEqual(net_factor("iap", 1_000_000), 0.70)
         self.assertEqual(net_factor("iap", 10_000), 0.85)
+
+
+class Calibration(unittest.TestCase):
+    def test_anchor_range_multiplies_the_shares(self):
+        row = {"reported_month_usd": 100.0, "us_low": 0.5, "us_high": 0.5, "ios_low": 0.5, "ios_high": 1.0,
+               "store_low": 1.0, "store_high": 1.0}
+        self.assertEqual(anchor_range(row), (25.0, 50.0))
+
+    def test_fit_recovers_a_known_scale(self):
+        def month(rank):
+            return 4_000_000 * rank ** -0.75 * 30
+        anchors = [(r, month(r) / 1.2, month(r) * 1.2) for r in (10, 30, 80)]
+        scale, spread = fit_scale(anchors)
+        self.assertAlmostEqual(scale, 4_000_000, delta=1)
+        self.assertAlmostEqual(spread, 0, places=6)
 
 
 if __name__ == "__main__":

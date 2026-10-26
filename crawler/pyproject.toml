@@ -19,4 +19,4 @@ build-backend = "setuptools.build_meta"
 include = ["appcrawl*"]
 
 [tool.setuptools.package-data]
-appcrawl = ["migrations/*.sql"]
+appcrawl = ["migrations/*.sql", "data/*.csv"]

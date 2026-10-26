@@ -12,6 +12,7 @@ from appcrawl.import_csv import import_csv
 from appcrawl.refresh_ios import store_batch
 from appcrawl.tiers import plan_tiers
 from appcrawl.trends import compute_trends
+from appcrawl.calibrate import calibrate
 from appcrawl.estimates import compute_estimates
 from appcrawl.iap import store_iap
 
@@ -27,7 +28,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -230,10 +231,10 @@ class DatabaseFlow(unittest.TestCase):
                FROM app_estimates_daily WHERE app_id = %s""", (ids["1"],)).fetchone()
         self.assertAlmostEqual(top[1], 156_000, delta=1)
         self.assertTrue(top[0] < top[1] < top[2])
-        # Rank 1 in Top Grossing: $2.5M a day. The RPD path is far lower, which is expected for a top earner.
+        # Rank 1 in Top Grossing: $2.5M a day (prior). Without calibration every grossing value is extrapolation.
         self.assertAlmostEqual(top[4], 2_500_000 * 30, delta=1)
         self.assertTrue(top[3] < top[4] < top[5])
-        self.assertEqual(top[6:], ("subscription", "medium", "grossing"))
+        self.assertEqual(top[6:], ("subscription", "low", "grossing"))
         only_grossing = self.connection.execute(
             "SELECT downloads_p50, revenue_p50, revenue_method FROM app_estimates_daily WHERE app_id = %s",
             (ids["300"],)).fetchone()
@@ -253,6 +254,34 @@ class DatabaseFlow(unittest.TestCase):
         # A second run on the same day replaces its rows.
         compute_estimates(self.connection)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_estimates_daily"), 29)
+
+    def test_calibration_scales_the_grossing_curve(self):
+        from datetime import date
+
+        db.ensure_month_partition(self.connection, "chart_ranks", date.today())
+        # Duolingo and Grindr are in the shipped ground truth; give them US Top Grossing ranks, plus one app below.
+        db.upsert_app_keys(self.connection, "ios", "chart",
+                           {"570060128": (None, None), "319881193": (None, None), "9": (None, None)})
+        ids = {s: i for s, i in self.connection.execute("SELECT store_id, id FROM apps")}
+        self.connection.cursor().executemany(
+            """INSERT INTO chart_ranks (captured_on, captured_at, platform, country, device, chart, genre_id, rank,
+                                        app_id, source)
+               VALUES (current_date, now(), 'ios', 'us', 'iphone', 'top-grossing', '36', %s, %s, 'apple_rss')""",
+            [(22, ids["570060128"]), (35, ids["319881193"]), (1, ids["9"])])
+        self.connection.commit()
+
+        result = calibrate(self.connection)
+        self.assertEqual((result["anchors"], result["best_anchor_rank"]), (2, 22))
+        self.assertGreater(result["grossing_top"], 2_500_000)  # both anchors earn more than the prior curve says
+        self.assertGreater(self.scalar("SELECT COUNT(*) FROM ground_truth"), 2)  # all CSV rows are loaded
+
+        compute_estimates(self.connection)
+        duolingo = self.connection.execute(
+            "SELECT revenue_p50, confidence FROM app_estimates_daily WHERE app_id = %s", (ids["570060128"],)).fetchone()
+        self.assertAlmostEqual(duolingo[0], result["grossing_top"] * 22 ** -0.75 * 30, delta=result["grossing_top"] / 1e5)
+        self.assertEqual(duolingo[1], "medium")
+        # Rank 1 lies above the best anchor (rank 22): extrapolated, so low confidence.
+        self.assertEqual(self.scalar("SELECT confidence FROM app_estimates_daily WHERE app_id = %s", ids["9"]), "low")
 
 
 if __name__ == "__main__":

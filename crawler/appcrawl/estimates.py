@@ -40,12 +40,13 @@ ALL_APPS = "36"
 # Rank curves, downloads per day in the US iPhone store. Free: steep flattening at the top (β≈0.5), steeper below.
 FREE_TOP, FREE_BETA_TOP, FREE_BETA_TAIL = 156_000, 0.5, 0.8
 PAID_TOP, PAID_BETA = 4_000, 0.95
-# Top Grossing, gross USD per day in the US iPhone store. ASSUMPTION from public orders of magnitude (rank 1 ≈ $2.5M a
-# day, rank 10 ≈ $450k, rank 100 ≈ $80k), not yet fitted to ground truth (04 §2.7); calibrate before trusting levels.
+# Top Grossing, gross USD per day in the US iPhone store. Prior from public orders of magnitude (rank 1 ≈ $2.5M a day);
+# `appcrawl calibrate` fits the scale on company-reported revenue and stores it in model_calibration ('grossing_top').
 GROSSING_TOP, GROSSING_BETA = 2_500_000, 0.75
 
 SIGMA = {"chart": 0.5, "chart-category": 0.75, "ratings": 1.0, "installs": 0.25}
 REVENUE_SIGMA = {"grossing": 0.6, "grossing-category": 0.85}
+EXTRAPOLATED_SIGMA = 0.9  # Top Grossing ranks above the best-ranked ground-truth anchor
 CONFIDENCE = {"chart": "medium", "installs": "medium", "chart-category": "low", "ratings": "low"}
 
 DOWNLOADS_PER_RATING_PRIOR = 67  # 1 / 1.5 % ratings per install (04 §0 Nr. 4)
@@ -73,13 +74,15 @@ def paid_curve(rank: float) -> float:
     return PAID_TOP * rank ** -PAID_BETA
 
 
-def grossing_curve(rank: float) -> float:
+def grossing_curve(rank: float, top: float = GROSSING_TOP) -> float:
     """Gross USD per day."""
-    return GROSSING_TOP * rank ** -GROSSING_BETA
+    return top * rank ** -GROSSING_BETA
 
 
-def curve(chart: str, rank: float) -> float:
-    return {"top-free": free_curve, "top-paid": paid_curve, "top-grossing": grossing_curve}[chart](rank)
+def curve(chart: str, rank: float, grossing_top: float = GROSSING_TOP) -> float:
+    if chart == "top-grossing":
+        return grossing_curve(rank, grossing_top)
+    return free_curve(rank) if chart == "top-free" else paid_curve(rank)
 
 
 def rpd(platform: str, model: str | None, price: float, annual: float | None, typical: float | None,
@@ -105,7 +108,7 @@ def net_factor(model: str | None, gross_month: float) -> float:
 
 
 def ranked_estimates(
-    connection: psycopg.Connection, charts: tuple[str, ...]
+    connection: psycopg.Connection, charts: tuple[str, ...], grossing_top: float = GROSSING_TOP
 ) -> tuple[dict[int, tuple[float, bool]], float | None]:
     """(app_id -> (value per day, from all-apps chart?), value at the all-apps chart's last rank) from US iPhone
     charts of the last 3 captured days.
@@ -127,21 +130,21 @@ def ranked_estimates(
     depth: dict[str, float] = {}
     for app_id, chart, genre, rank in rows:
         if genre == ALL_APPS:
-            overall[app_id] = max(overall.get(app_id, 0), curve(chart, rank))
+            overall[app_id] = max(overall.get(app_id, 0), curve(chart, rank, grossing_top))
             depth[chart] = max(depth.get(chart, 0), rank)
         else:
             by_genre[(chart, genre)].append((app_id, rank))
     # The lowest value the all-apps charts still show: any app outside them earns or downloads less.
-    floor = max((curve(chart, rank) for chart, rank in depth.items()), default=None)
+    floor = max((curve(chart, rank, grossing_top) for chart, rank in depth.items()), default=None)
 
     result = {app_id: (value, True) for app_id, value in overall.items()}
     candidates: dict[int, list[float]] = defaultdict(list)
     for (chart, genre), ranked in by_genre.items():
-        ratios = [overall[a] / curve(chart, r) for a, r in ranked if a in overall]
+        ratios = [overall[a] / curve(chart, r, grossing_top) for a, r in ranked if a in overall]
         scale = statistics.median(ratios) if len(ratios) >= MIN_OVERLAP_APPS else CATEGORY_SCALE_PRIOR
         for app_id, rank in ranked:
             if app_id not in overall:
-                candidates[app_id].append(scale * curve(chart, rank))
+                candidates[app_id].append(scale * curve(chart, rank, grossing_top))
     for app_id, values in candidates.items():
         value = statistics.median(values)
         result[app_id] = (min(value, floor) if floor else value, False)
@@ -180,7 +183,13 @@ def compute_estimates(connection: psycopg.Connection, day: date | None = None) -
     db.ensure_month_partition(connection, "app_estimates_daily", day)
     ranked, _ = ranked_estimates(connection, ("top-free", "top-paid"))
     charted = {app_id: (value, "chart" if overall else "chart-category") for app_id, (value, overall) in ranked.items()}
-    grossing, grossing_floor = ranked_estimates(connection, ("top-grossing",))
+    calibration = dict(connection.execute("SELECT key, value FROM model_calibration").fetchall())
+    grossing_top = calibration.get("grossing_top", GROSSING_TOP)
+    # Revenue above the best-ranked anchor's rank is extrapolation (no anchor checked it); without calibration, all is.
+    extrapolated_above = grossing_curve(calibration.get("grossing_anchor_rank", math.inf), grossing_top)
+    log(f"grossing scale ${grossing_top / 1e6:.2f}M/day at rank 1 "
+        f"({'calibrated' if 'grossing_top' in calibration else 'prior'})")
+    grossing, grossing_floor = ranked_estimates(connection, ("top-grossing",), grossing_top)
     # A US iOS app outside the all-apps Top Grossing chart earns less than its last rank (per month).
     revenue_cap = grossing_floor * 30 if grossing_floor else None
 
@@ -244,6 +253,8 @@ def compute_estimates(connection: psycopg.Connection, day: date | None = None) -
             revenue_method = "grossing" if in_overall else "grossing-category"
             gross, sigma = revenue_day * 30, REVENUE_SIGMA[revenue_method]
             confidence = "medium" if in_overall else "low"
+            if in_overall and revenue_day > extrapolated_above:
+                sigma, confidence = EXTRAPOLATED_SIGMA, "low"
             if path_b and path_b[0] > DISAGREEMENT * gross:
                 confidence = "low"
         elif path_b:
