@@ -103,6 +103,10 @@ function Filters({ filters, categoryList }: { filters: ExploreFilters; categoryL
           <AutoSubmitCheckbox name="charted" value="1" defaultChecked={filters.charted} className="accent-primary" />
           Nur in Charts
         </label>
+        <label className="flex items-center gap-2" title="Apple Search Ads in der EU in den letzten 90 Tagen (Apple Ad Repository)">
+          <AutoSubmitCheckbox name="appleAds" value="1" defaultChecked={filters.appleAds} className="accent-primary" />
+          Wirbt bei Apple (EU)
+        </label>
         <label className="flex items-center gap-2" title="Auch Apps, für die bisher nur ID und Slug aus der Sitemap bekannt sind">
           <AutoSubmitCheckbox name="all" value="1" defaultChecked={filters.all} className="accent-primary" />
           Inkl. ohne Metadaten

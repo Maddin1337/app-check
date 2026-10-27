@@ -17,6 +17,7 @@ export type ExploreFilters = {
   language: string; // ISO code an iOS app lists, e.g. "DE"
   minRating: number; // average rating, 0 = any
   iap: "" | "yes" | "no";
+  appleAds: boolean; // advertised with Apple Search Ads in the EU in the last 90 days
   sort: "ratings" | "rank" | "revenue" | "downloads" | "growth" | "newest" | "updated" | "name";
   page: number;
 };
@@ -45,6 +46,7 @@ export function parseFilters(params: Params): ExploreFilters {
     language: one(params.language).slice(0, 3).toUpperCase().replace(/[^A-Z]/g, ""),
     minRating: [3, 4, 4.5].includes(Number(one(params.minRating))) ? Number(one(params.minRating)) : 0,
     iap: pick(one(params.iap), ["", "yes", "no"] as const, ""),
+    appleAds: one(params.appleAds) === "1",
     sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "growth", "newest", "updated", "name"] as const, "ratings"),
     page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
   };
@@ -110,6 +112,7 @@ function where(f: ExploreFilters) {
     ${f.iap === "yes" ? sql`AND (m.model IN ('subscription', 'iap') OR a.offers_iap)`
       : f.iap === "no" ? sql`AND (m.model IN ('paid', 'free') OR a.offers_iap = false)` : sql``}
     ${f.sort === "growth" ? sql`AND t.per_day > 0` : sql``}
+    ${f.appleAds ? sql`AND EXISTS (SELECT 1 FROM apple_ads_fetch af WHERE af.app_id = a.id AND af.ads > 0)` : sql``}
     ${f.sort === "revenue" ? sql`AND e.revenue_p50 IS NOT NULL` : f.sort === "downloads" ? sql`AND e.app_id IS NOT NULL` : sql``}
     ${f.sort === "rank" ? sql`AND b.app_id IS NOT NULL` : sql``}`;
 }
@@ -270,7 +273,19 @@ export async function appDetail(platform: string, storeId: string) {
   const [storePage] = await sql<{
     fetched_at: Date; rating_counts: string[] | null; screenshots: { template: string; width: number | null; height: number | null }[] | null;
   }[]>`SELECT fetched_at, rating_counts, screenshots FROM app_store_page WHERE app_id = ${app.id}`;
-  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage };
+  const [appleAds] = await sql<{
+    ads: number; countries: string[]; first_impression: Date | null; last_impression: Date | null;
+    placements: string[]; formats: string[]; fetched_at: Date | null; data_end: Date | null;
+  }[]>`
+    SELECT COUNT(d.ad_id)::int AS ads, COALESCE(array_agg(DISTINCT d.country) FILTER (WHERE d.country IS NOT NULL), '{}') AS countries,
+           MIN(d.first_impression) AS first_impression, MAX(d.last_impression) AS last_impression,
+           COALESCE(array_agg(DISTINCT d.placement) FILTER (WHERE d.placement IS NOT NULL), '{}') AS placements,
+           COALESCE(array_agg(DISTINCT d.format) FILTER (WHERE d.format IS NOT NULL), '{}') AS formats,
+           f.fetched_at, f.data_end
+    FROM apple_ads_fetch f LEFT JOIN apple_ads d ON d.app_id = f.app_id
+    WHERE f.app_id = ${app.id}
+    GROUP BY f.fetched_at, f.data_end`;
+  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage, appleAds };
 }
 
 export async function chartFacets() {

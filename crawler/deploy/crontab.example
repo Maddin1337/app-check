@@ -21,6 +21,9 @@ LOG=/var/log/appcrawl
 # recomputed so newly priced apps get revenue the same day.
 0 13 * * *  cd $APP && flock -n /tmp/appcrawl-iap.lock sh -c "$PY -m appcrawl refresh-iap --limit 8000; $PY -m appcrawl estimates" >> $LOG/iap.log 2>&1
 
+# Apple Search Ads in the EU (Ad Repository API): 5,000 apps a day, each weekly (~3-4 h at 0.5/s).
+0 19 * * *  cd $APP && flock -n /tmp/appcrawl-ads-apple.lock $PY -m appcrawl ads-apple --limit 5000 >> $LOG/ads.log 2>&1
+
 # Android: work through due detail pages around the clock; each run stops when nothing is due.
 */30 * * * * cd $APP && flock -n /tmp/appcrawl-android.lock $PY -m appcrawl refresh-android --limit 20000 >> $LOG/refresh-android.log 2>&1
 

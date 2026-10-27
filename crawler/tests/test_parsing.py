@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from appcrawl.charts import CHART_URL, parse_chart_page, parse_grossing_rss
 from appcrawl.discover import parse_apple_urlset, parse_locs, parse_play_urlset, sitemap_indexes
+from appcrawl.ads_apple import parse_ad
 from appcrawl.calibrate import anchor_range, fit_scale
 from appcrawl.estimates import curve, net_factor, rpd
 from appcrawl.iap import classify, parse_app_page, parse_page_extras, parse_price
@@ -224,6 +225,40 @@ class Calibration(unittest.TestCase):
         scale, spread = fit_scale(anchors)
         self.assertAlmostEqual(scale, 4_000_000, delta=1)
         self.assertAlmostEqual(spread, 0, places=6)
+
+
+class AppleAds(unittest.TestCase):
+    def test_parse_ad(self):
+        ad = parse_ad({
+            "adId": "1fae", "appId": 688981330, "placement": "APPSTORE_SEARCH_RESULTS", "format": "Icon Ad",
+            "countryOrRegion": "DE", "firstImpressionDate": "2026-03-29 00:00:00.0",
+            "lastImpressionDate": "2026-10-22 00:00:00.0", "defaultLanguageTag": "de-DE",
+            "audienceRefinement": {"ageTarget": True}, "adAssets": [{"pictureUrl": "https://x/p.png", "width": 10}, {}],
+        })
+        self.assertEqual((ad["store_id"], ad["country"], str(ad["first_impression"]), str(ad["last_impression"])),
+                         ("688981330", "DE", "2026-03-29", "2026-10-22"))
+        self.assertEqual(json.loads(ad["assets"]), [{"pictureUrl": "https://x/p.png", "width": 10}])
+
+    def test_pagination_counts_pages(self):
+        from unittest import mock
+        from urllib.parse import parse_qs, urlparse
+
+        import appcrawl.ads_apple as ads_apple
+
+        seen = []
+
+        def fake_fetch(url, limiter, headers=None):
+            page = int(parse_qs(urlparse(url).query)["offset"][0])
+            seen.append(page)
+            count = 100 if page < 2 else 22
+            data = [{"adId": f"{page}-{i}", "appId": 1} for i in range(count)]
+            return 200, json.dumps({"data": data, "dataEndDate": "2026-10-22",
+                                    "pagination": {"totalResults": 222}}).encode()
+
+        with mock.patch.object(ads_apple, "fetch", fake_fetch):
+            ads, data_end = ads_apple.app_ads("1", limiter=None)
+        self.assertEqual(seen, [0, 1, 2])
+        self.assertEqual((len(ads), len({a["ad_id"] for a in ads}), data_end), (222, 222, "2026-10-22"))
 
 
 if __name__ == "__main__":

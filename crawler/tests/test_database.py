@@ -29,7 +29,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events", "0007_chart_summary", "0008_store_page"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events", "0007_chart_summary", "0008_store_page", "0009_apple_ads"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -348,6 +348,19 @@ class DatabaseFlow(unittest.TestCase):
         # Running again replaces the day's rows instead of adding to them.
         compute_events(self.connection)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_events"), 9)
+
+    def test_apple_ads_store_replaces_an_apps_window(self):
+        from appcrawl.ads_apple import parse_ad, store_app_ads
+
+        db.upsert_app_keys(self.connection, "ios", "chart", {"688981330": (None, None)})
+        app_id = self.scalar("SELECT id FROM apps WHERE store_id = '688981330'")
+        ad = {"adId": "a1", "appId": 688981330, "countryOrRegion": "DE", "firstImpressionDate": "2026-03-29 00:00:00.0",
+              "lastImpressionDate": "2026-10-22 00:00:00.0"}
+        store_app_ads(self.connection, app_id, [parse_ad(ad), parse_ad({**ad, "countryOrRegion": "AT"})], "2026-10-22")
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM apple_ads WHERE app_id = %s", app_id), 2)
+        store_app_ads(self.connection, app_id, [], "2026-10-29")  # no longer advertising
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM apple_ads WHERE app_id = %s", app_id), 0)
+        self.assertEqual(self.scalar("SELECT ads FROM apple_ads_fetch WHERE app_id = %s", app_id), 0)
 
 
 if __name__ == "__main__":

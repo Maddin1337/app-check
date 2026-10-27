@@ -48,7 +48,8 @@ def _backoff(attempt: int, base: float, cap: float) -> float:
     return min(cap, base * 2**attempt) + random.uniform(0, 1)
 
 
-def fetch(url: str, limiter: RateLimiter, retries: int = 5, timeout: float = 90) -> tuple[int, bytes]:
+def fetch(url: str, limiter: RateLimiter, retries: int = 5, timeout: float = 90,
+          headers: dict[str, str] | None = None) -> tuple[int, bytes]:
     """Returns (status, body). 404/410 come back as a status; other failures retry, then raise.
 
     Bodies are transparently gunzipped, for Content-Encoding: gzip as well as .xml.gz files.
@@ -56,7 +57,7 @@ def fetch(url: str, limiter: RateLimiter, retries: int = 5, timeout: float = 90)
     last_reason = "no attempt"
     for attempt in range(retries + 1):
         limiter.wait()
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip", **(headers or {})})
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = response.read()

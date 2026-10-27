@@ -24,7 +24,7 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
   if (platform !== "ios" && platform !== "android") notFound();
   const detail = await appDetail(platform, decodeURIComponent(storeId));
   if (!detail) notFound();
-  const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage } = detail;
+  const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage, appleAds } = detail;
   const events = await appEvents(app.id);
   const name = displayName(app.name, app.slug, app.store_id);
 
@@ -183,6 +183,23 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
 
         {storePage?.rating_counts ? <RatingHistogram counts={storePage.rating_counts.map(Number)} /> : null}
 
+        {appleAds ? (
+          <Card title="Apple-Anzeigen in der EU"
+            aside={<span className="text-xs text-muted">Apple Ad Repository{appleAds.data_end ? `, Daten bis ${formatDate(appleAds.data_end)}` : ""}</span>}>
+            {appleAds.ads === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted">Keine Apple-Search-Ads-Anzeigen in den letzten 90 Tagen.</p>
+            ) : (
+              <dl className="grid gap-x-6 gap-y-3 px-4 py-4 text-sm sm:grid-cols-2">
+                <Detail label="Anzeigen (je Land gezählt)" value={formatNumber(appleAds.ads)} />
+                <Detail label="Länder" value={`${appleAds.countries.length}: ${appleAds.countries.sort().join(", ")}`} />
+                <Detail label="Zeitraum" value={`${formatDate(appleAds.first_impression)} bis ${formatDate(appleAds.last_impression)}`} />
+                <Detail label="Platzierungen" value={appleAds.placements.map((p) => PLACEMENT_LABEL[p] ?? p).join(", ")} />
+                <Detail label="Formate" value={appleAds.formats.join(", ") || "–"} />
+              </dl>
+            )}
+          </Card>
+        ) : null}
+
         <Card title="Ereignisse" aside={<span className="text-xs text-muted">letzte 30</span>}>
           {events.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted">Noch keine Ereignisse erfasst.</p>
@@ -273,6 +290,13 @@ const METHOD_TEXT: Record<string, string> = {
   "chart-category": "Downloads aus dem Platz in einem US-Kategorie-Chart, skaliert über Apps, die zugleich in den Gesamtcharts stehen.",
   ratings: "Downloads aus dem Zuwachs der Bewertungen im US-Store, umgerechnet mit dem Verhältnis Downloads je Bewertung der Chart-Apps.",
   installs: "Downloads gemessen: tägliche Zunahme der exakten Installationszahl auf Google Play.",
+};
+
+const PLACEMENT_LABEL: Record<string, string> = {
+  APPSTORE_SEARCH_RESULTS: "Suchergebnisse",
+  APPSTORE_SEARCH_TAB: "Such-Tab",
+  APPSTORE_TODAY_TAB: "Heute-Tab",
+  APPSTORE_PRODUCT_PAGE: "Produktseiten",
 };
 
 const REVENUE_METHOD_TEXT: Record<string, string> = {

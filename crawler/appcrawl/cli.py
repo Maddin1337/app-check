@@ -5,6 +5,7 @@ import gzip
 import sys
 
 from . import db
+from .ads_apple import refresh_apple_ads
 from .charts import DEFAULT_COUNTRIES, collect_charts, refresh_chart_summary
 from .calibrate import calibrate
 from .discover import discover
@@ -121,6 +122,11 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("plan-tiers", help="recompute refresh tiers from charts, size and age")
     sub.add_parser("chart-summary", help="rebuild the best chart position per app from the latest chart day")
     sub.add_parser("trends", help="recompute 7- and 30-day growth from the daily metrics")
+
+    p = sub.add_parser("ads-apple", help="Apple Search Ads in the EU per app, from Apple's Ad Repository API")
+    p.add_argument("--rate", type=float, default=0.5, help="requests per second (default 0.5)")
+    p.add_argument("--workers", type=int, default=2)
+    p.add_argument("--limit", type=int, default=5000, help="at most N apps (default 5000)")
     sub.add_parser("estimates", help="today's downloads and revenue estimates (model v0, ranges)")
     sub.add_parser("calibrate", help="fit the Top Grossing curve on ground truth (appcrawl/data/ground_truth.csv)")
     sub.add_parser("events", help="today's app events: rank jumps, Top 100 entries, spikes, price and version changes")
@@ -161,6 +167,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"chart summary for {refresh_chart_summary(connection):,} apps", file=sys.stderr)
         elif args.command == "plan-tiers":
             print(plan_tiers(connection), file=sys.stderr)
+        elif args.command == "ads-apple":
+            refresh_apple_ads(connection, args.rate, args.workers, args.limit)
         elif args.command == "trends":
             print(compute_trends(connection), file=sys.stderr)
         elif args.command == "events":

@@ -19,6 +19,7 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `trends` | eigene Messwerte | Wachstum über 7 und 30 Tage: iOS Bewertungen pro Store, Android exakte Installationen |
 | `refresh-iap` | App-Store-Seiten (laut robots.txt erlaubt) | Liste der In-App-Käufe mit Preis und Monetarisierung pro App (Abo, IAP, Kauf-App, gratis), dazu Sterne-Verteilung und Screenshots aus derselben Seite; Android aus der Preisspanne der Detailseite |
 | `events` | eigene Daten | Ereignisse pro App gegenüber der vorigen Messung: Sprünge ≥ 20 Plätze und Top-100-Einstiege in den Gesamtcharts, Bewertungs- und Installations-Sprünge, Preis- und Versionswechsel |
+| `ads-apple` | Apples Ad Repository API (öffentlich, für große Abfragen vorgesehen) | Apple-Search-Ads-Anzeigen in 25 EU-Ländern pro App: Platzierung, Format, erste/letzte Ausspielung, Assets; wöchentlich pro App |
 | `estimates` | eigene Daten | **Schätzmodell v0:** Downloads pro Tag und Umsatz pro Monat (brutto/netto) als Spanne P10–P90 mit Konfidenz |
 
 **Android hat keine Charts:** Die Ranglisten lädt Google Play nur über die gesperrte interne Schnittstelle
@@ -39,6 +40,7 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `app_estimates_daily` | Schätzungen pro App und Tag (monatlich partitioniert) |
 | `app_events` | Ereignisse pro App und Tag (`0006_events.sql`) |
 | `app_store_page` | Sterne-Verteilung und iPhone-Screenshots von der App-Store-Seite (`0008_store_page.sql`) |
+| `apple_ads`, `apple_ads_fetch` | Apple-Anzeigen der letzten 90 Tage pro App und Land (`0009_apple_ads.sql`) |
 | `app_chart_summary` | bester Chart-Platz pro App am letzten Chart-Tag, nach jedem Chart-Lauf neu (`0007_chart_summary.sql`) |
 | `sitemap_files` | Fortschritt der Discovery |
 
@@ -120,6 +122,7 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 | 01:05 | `charts --grossing-rss` + `plan-tiers` | ~1 h für 40 Märkte |
 | 02:15 | `refresh-ios`, danach `--missing`, dann `trends`, `calibrate`, `estimates` und `events` | ~8–9 h für den ganzen Katalog, danach Minuten |
 | 13:00 | `refresh-iap --limit 8000`, danach `estimates` | ~4,5 h bei 0,5 Seiten/s |
+| 19:00 | `ads-apple --limit 5000` | ~3–4 h bei 0,5 Requests/s |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
 | So 03:00 | `discover android` | ~24 h bei 1/s |
 
