@@ -73,6 +73,14 @@ class DatabaseFlow(unittest.TestCase):
         self.assertEqual(self.scalar("SELECT status FROM apps WHERE store_id = '9'"), "not_found")
         self.assertEqual(self.scalar("SELECT rating_count FROM app_metrics_daily"), 5531166)
 
+        # Refreshed later today means due again tomorrow at any hour, not only after the same time of day.
+        from appcrawl.refresh_ios import due_ids
+        self.connection.execute("UPDATE apps SET next_refresh_at = now() + interval '1 day' WHERE store_id = '570060128'")
+        self.assertNotIn(("us", "570060128"), due_ids(self.connection, "us", False, None))
+        self.connection.execute(
+            "UPDATE apps SET next_refresh_at = date_trunc('day', now()) + interval '23 hours' WHERE store_id = '570060128'")
+        self.assertIn(("us", "570060128"), due_ids(self.connection, "us", False, None))
+
         tiers = plan_tiers(self.connection)
         self.assertEqual(self.scalar("SELECT tier FROM apps WHERE store_id = '570060128'"), 0)
         self.assertEqual(self.scalar("SELECT tier FROM apps WHERE store_id = '9'"), 3)

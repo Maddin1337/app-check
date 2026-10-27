@@ -74,9 +74,11 @@ def due_ids(connection: psycopg.Connection, country: str, missing: bool, limit: 
                    ORDER BY a.tier LIMIT %s"""
         params = (country, limit)
     else:
+        # Due by calendar day, not by the second: the daily run starts at a fixed time and takes its list then, so an
+        # app refreshed at 10:00 yesterday must be due at 02:15 today, or it would only be measured every other day.
         query = """SELECT %s, store_id FROM apps
                    WHERE platform = 'ios' AND status <> 'not_found' AND COALESCE(refresh_country, %s) = %s
-                     AND (next_refresh_at IS NULL OR next_refresh_at <= now())
+                     AND (next_refresh_at IS NULL OR next_refresh_at::date <= current_date)
                    ORDER BY next_refresh_at NULLS FIRST, tier LIMIT %s"""
         params = (country, country, country, limit)
     return connection.execute(query, params).fetchall()
