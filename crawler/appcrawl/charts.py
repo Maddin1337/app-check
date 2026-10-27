@@ -117,6 +117,19 @@ def store_charts(connection: psycopg.Connection, target, charts: dict) -> int:
     return len(rows)
 
 
+def refresh_chart_summary(connection: psycopg.Connection) -> int:
+    """Rebuilds app_chart_summary from the latest captured chart day (one transaction, readers see old or new)."""
+    connection.execute("DELETE FROM app_chart_summary")
+    cursor = connection.execute(
+        """INSERT INTO app_chart_summary (app_id, day, best_rank, chart_entries)
+           SELECT app_id, captured_on, MIN(rank), COUNT(*) FROM chart_ranks
+           WHERE captured_on = (SELECT MAX(captured_on) FROM chart_ranks)
+           GROUP BY app_id, captured_on"""
+    )
+    connection.commit()
+    return cursor.rowcount
+
+
 def collect_charts(
     connection: psycopg.Connection,
     countries: list[str] | None,
@@ -142,7 +155,7 @@ def collect_charts(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_fetch_target, t, limiter, grossing_rss, grossing_only): t for t in targets}
         for future in as_completed(futures):
-            target = futures[future]
+            target = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
                 charts = future.result()
             except (FetchError, ValueError, KeyError) as failure:
@@ -156,3 +169,4 @@ def collect_charts(
             done += 1
             if done % 25 == 0 or done + failed == len(targets):
                 print(f"charts: {done}/{len(targets)} pages, {rows:,} ranks, {failed} failed", file=sys.stderr)
+    print(f"charts: summary for {refresh_chart_summary(connection):,} apps", file=sys.stderr)

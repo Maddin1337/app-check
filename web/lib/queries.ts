@@ -1,3 +1,5 @@
+import { cacheLife } from "next/cache";
+
 import { sql } from "./db";
 
 export type ExploreFilters = {
@@ -11,7 +13,11 @@ export type ExploreFilters = {
   all: boolean; // include apps not refreshed yet (only an ID and slug)
   minRevenue: number; // estimated gross USD per month (model median)
   developer: string; // developer_id, exact
-  sort: "ratings" | "rank" | "revenue" | "downloads" | "newest" | "updated" | "name";
+  excludeCategory: string;
+  language: string; // ISO code an iOS app lists, e.g. "DE"
+  minRating: number; // average rating, 0 = any
+  iap: "" | "yes" | "no";
+  sort: "ratings" | "rank" | "revenue" | "downloads" | "growth" | "newest" | "updated" | "name";
   page: number;
 };
 
@@ -35,7 +41,11 @@ export function parseFilters(params: Params): ExploreFilters {
     all: one(params.all) === "1",
     minRevenue: Math.max(0, Number.parseInt(one(params.minRevenue), 10) || 0),
     developer: one(params.developer).slice(0, 200),
-    sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "newest", "updated", "name"] as const, "ratings"),
+    excludeCategory: one(params.excludeCategory).slice(0, 100),
+    language: one(params.language).slice(0, 3).toUpperCase().replace(/[^A-Z]/g, ""),
+    minRating: [3, 4, 4.5].includes(Number(one(params.minRating))) ? Number(one(params.minRating)) : 0,
+    iap: pick(one(params.iap), ["", "yes", "no"] as const, ""),
+    sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "growth", "newest", "updated", "name"] as const, "ratings"),
     page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
   };
 }
@@ -78,12 +88,8 @@ const latestEstimates = sql`
   FROM app_estimates_daily
   WHERE day = (SELECT MAX(day) FROM app_estimates_daily)`;
 
-/** Best chart position per app on the latest captured day. */
-const bestRanks = sql`
-  SELECT app_id, MIN(rank)::int AS best_rank, COUNT(*)::int AS chart_entries
-  FROM chart_ranks
-  WHERE captured_on = (SELECT MAX(captured_on) FROM chart_ranks)
-  GROUP BY app_id`;
+/** Best chart position per app on the latest captured day, precomputed by the crawler (app_chart_summary). */
+const bestRanks = sql`SELECT app_id, best_rank, chart_entries FROM app_chart_summary`;
 
 function where(f: ExploreFilters) {
   return sql`
@@ -98,7 +104,14 @@ function where(f: ExploreFilters) {
     ${f.charted ? sql`AND b.app_id IS NOT NULL` : sql``}
     ${f.minRevenue ? sql`AND e.revenue_p50 >= ${f.minRevenue}` : sql``}
     ${f.developer ? sql`AND a.developer_id = ${f.developer}` : sql``}
-    ${f.sort === "revenue" ? sql`AND e.revenue_p50 IS NOT NULL` : f.sort === "downloads" ? sql`AND e.app_id IS NOT NULL` : sql``}`;
+    ${f.excludeCategory ? sql`AND a.category IS DISTINCT FROM ${f.excludeCategory}` : sql``}
+    ${f.language ? sql`AND a.languages @> ARRAY[${f.language}]::text[]` : sql``}
+    ${f.minRating ? sql`AND a.rating_avg >= ${f.minRating}` : sql``}
+    ${f.iap === "yes" ? sql`AND (m.model IN ('subscription', 'iap') OR a.offers_iap)`
+      : f.iap === "no" ? sql`AND (m.model IN ('paid', 'free') OR a.offers_iap = false)` : sql``}
+    ${f.sort === "growth" ? sql`AND t.per_day > 0` : sql``}
+    ${f.sort === "revenue" ? sql`AND e.revenue_p50 IS NOT NULL` : f.sort === "downloads" ? sql`AND e.app_id IS NOT NULL` : sql``}
+    ${f.sort === "rank" ? sql`AND b.app_id IS NOT NULL` : sql``}`;
 }
 
 function orderBy(sort: ExploreFilters["sort"]) {
@@ -109,6 +122,8 @@ function orderBy(sort: ExploreFilters["sort"]) {
       return sql`ORDER BY e.revenue_p50 DESC NULLS LAST, a.id`;
     case "downloads":
       return sql`ORDER BY e.downloads_p50 DESC NULLS LAST, a.id`;
+    case "growth":
+      return sql`ORDER BY t.per_day DESC NULLS LAST, a.id`;
     case "newest":
       return sql`ORDER BY a.released_at DESC NULLS LAST`;
     case "updated":
@@ -120,24 +135,47 @@ function orderBy(sort: ExploreFilters["sort"]) {
   }
 }
 
+export type GrowthFields = {
+  growth: number | null; // 30-day relative growth of ratings (iOS) or installs (Android)
+  growth_per_day: number | null;
+  growth_metric: "ratings" | "installs" | null;
+  growth_country: string | null;
+  growth_start_day: Date | null;
+};
+
+const exploreFrom = sql`
+  FROM apps a
+  LEFT JOIN b ON b.app_id = a.id
+  LEFT JOIN e ON e.app_id = a.id
+  LEFT JOIN app_trends t ON t.app_id = a.id AND t.window_days = 30
+  LEFT JOIN app_monetization m ON m.app_id = a.id`;
+
+export const COUNT_CAP = 10_000;
+
 export async function exploreApps(f: ExploreFilters) {
-  const rows = await sql<(AppRow & EstimateFields)[]>`
+  const rows = await sql<(AppRow & EstimateFields & GrowthFields)[]>`
     WITH b AS (${bestRanks}), e AS (${latestEstimates})
     SELECT a.id, a.platform, a.store_id, a.name, a.slug, a.developer_name, a.category, a.icon_url, a.price, a.currency,
            a.rating_avg, a.rating_count, a.installs_exact, a.released_at, a.store_updated_at, a.status,
            b.best_rank, b.chart_entries,
-           e.downloads_p10, e.downloads_p50, e.downloads_p90, e.revenue_p10, e.revenue_p50, e.revenue_p90, e.confidence, e.scope
-    FROM apps a LEFT JOIN b ON b.app_id = a.id LEFT JOIN e ON e.app_id = a.id
+           e.downloads_p10, e.downloads_p50, e.downloads_p90, e.revenue_p10, e.revenue_p50, e.revenue_p90, e.confidence, e.scope,
+           t.growth, t.per_day AS growth_per_day, t.metric AS growth_metric, t.country AS growth_country,
+           t.start_day AS growth_start_day
+    ${exploreFrom}
     ${where(f)}
     ${orderBy(f.sort)}
     LIMIT ${PAGE_SIZE} OFFSET ${(f.page - 1) * PAGE_SIZE}`;
+  // Counting stops after COUNT_CAP matches: an exact count over a million active apps costs seconds per request.
   const [{ total }] = await sql<{ total: number }[]>`
     WITH b AS (${bestRanks}), e AS (${latestEstimates})
-    SELECT COUNT(*)::int AS total FROM apps a LEFT JOIN b ON b.app_id = a.id LEFT JOIN e ON e.app_id = a.id ${where(f)}`;
-  return { rows, total };
+    SELECT COUNT(*)::int AS total FROM (SELECT 1 ${exploreFrom} ${where(f)} LIMIT ${COUNT_CAP + 1}) capped`;
+  return { rows, total, capped: total > COUNT_CAP };
 }
 
+/** Catalog totals: whole-table counts, cached for an hour because they change once a day. */
 export async function overview() {
+  "use cache";
+  cacheLife("hours");
   const [counts] = await sql<
     { ios: number; android: number; active: number; chart_days: number; latest: Date | null; charted: number }[]
   >`
@@ -152,6 +190,8 @@ export async function overview() {
 }
 
 export async function categories() {
+  "use cache";
+  cacheLife("hours");
   return sql<{ category: string; apps: number }[]>`
     SELECT category, COUNT(*)::int AS apps FROM apps
     WHERE status = 'active' AND category IS NOT NULL
@@ -323,7 +363,7 @@ export async function trendCategories(platform: string, window: number) {
 }
 
 /** Daily values behind each trend row, for the sparklines: app_id -> values in day order. */
-export async function trendSeries(rows: TrendRow[]) {
+export async function trendSeries(rows: Pick<TrendRow, "id" | "country" | "metric" | "start_day">[]) {
   if (rows.length === 0) return new Map<number, number[]>();
   const series = await sql<{ app_id: number; value: number }[]>`
     SELECT m.app_id, CASE WHEN r.metric = 'installs' THEN m.installs_exact ELSE m.rating_count END::float8 AS value

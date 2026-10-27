@@ -4,9 +4,10 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { AutoSubmitCheckbox, AutoSubmitSelect } from "@/components/auto-submit";
-import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton } from "@/components/ui";
-import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPrice, formatUsd } from "@/lib/format";
-import { categories, exploreApps, overview, PAGE_SIZE, parseFilters, type ExploreFilters } from "@/lib/queries";
+import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton, Sparkline } from "@/components/ui";
+import { LANGUAGES } from "@/lib/catalog";
+import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPercent, formatPrice, formatUsd } from "@/lib/format";
+import { categories, COUNT_CAP, exploreApps, overview, PAGE_SIZE, parseFilters, trendSeries, type ExploreFilters } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "App-Explorer" };
 
@@ -39,20 +40,23 @@ async function Overview() {
 
 async function Explorer({ searchParams }: { searchParams: PageProps<"/explore">["searchParams"] }) {
   const filters = parseFilters(await searchParams);
-  const [{ rows, total }, categoryList] = await Promise.all([exploreApps(filters), categories()]);
+  const [{ rows, total, capped }, categoryList] = await Promise.all([exploreApps(filters), categories()]);
+  const series = await trendSeries(rows.flatMap((r) =>
+    r.growth_metric && r.growth_country && r.growth_start_day
+      ? [{ id: r.id, country: r.growth_country, metric: r.growth_metric, start_day: r.growth_start_day }] : []));
   return (
     <>
       <Filters filters={filters} categoryList={categoryList} />
       <Card
-        title={`${formatNumber(total)} Apps`}
-        aside={<span className="text-xs text-muted">Seite {filters.page} von {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>}
+        title={capped ? `Über ${formatNumber(COUNT_CAP)} Apps` : `${formatNumber(total)} Apps`}
+        aside={<span className="text-xs text-muted">Seite {filters.page}{capped ? "" : ` von ${Math.max(1, Math.ceil(total / PAGE_SIZE))}`}</span>}
       >
-        <ResultTable rows={rows} showInstalls={filters.platform !== "ios"} />
+        <ResultTable rows={rows} series={series} showInstalls={filters.platform !== "ios"} />
         <p className="border-t border-border px-4 py-2 text-xs text-muted">
           Downloads und Umsatz sind Schätzungen (Modell v0, früh), gerundet; die Spanne P10–P90 steht im Tooltip. iOS: nur
           US App Store, Android: weltweit. Umsatz brutto pro Monat aus Store-Käufen, ohne Werbeeinnahmen.
         </p>
-        <Pagination filters={filters} total={total} />
+        <Pagination filters={filters} total={total} capped={capped} />
       </Card>
     </>
   );
@@ -82,10 +86,18 @@ function Filters({ filters, categoryList }: { filters: ExploreFilters; categoryL
         options={[["", "Egal"], ["100", "100"], ["1000", "1.000"], ["10000", "10.000"], ["100000", "100.000"]]} />
       <Select label="Preis" name="price" value={filters.price}
         options={[["", "Alle"], ["free", "Kostenlos"], ["paid", "Kostenpflichtig"]]} />
+      <Select label="Kategorie ausschließen" name="excludeCategory" value={filters.excludeCategory}
+        options={[["", "Keine"], ...categoryList.map((c) => [c.category, c.category] as [string, string])]} />
+      <Select label="Sprache (iOS)" name="language" value={filters.language}
+        options={[["", "Egal"], ...Object.entries(LANGUAGES)]} />
+      <Select label="Ø Bewertung ab" name="minRating" value={String(filters.minRating || "")}
+        options={[["", "Egal"], ["3", "3,0 Sterne"], ["4", "4,0 Sterne"], ["4.5", "4,5 Sterne"]]} />
+      <Select label="In-App-Käufe" name="iap" value={filters.iap}
+        options={[["", "Egal"], ["yes", "Ja (Abo oder IAP)"], ["no", "Nein"]]} />
       <Select label="Umsatz/Monat ab" name="minRevenue" value={String(filters.minRevenue || "")}
         options={[["", "Egal"], ["1000", "1.000 $"], ["10000", "10.000 $"], ["100000", "100.000 $"], ["1000000", "1 Mio. $"]]} />
       <Select label="Sortierung" name="sort" value={filters.sort}
-        options={[["ratings", "Meiste Bewertungen"], ["revenue", "Höchster Umsatz (geschätzt)"], ["downloads", "Meiste Downloads (geschätzt)"], ["rank", "Bester Chart-Platz"], ["newest", "Neueste"], ["updated", "Zuletzt aktualisiert"], ["name", "Name"]]} />
+        options={[["ratings", "Meiste Bewertungen"], ["revenue", "Höchster Umsatz (geschätzt)"], ["downloads", "Meiste Downloads (geschätzt)"], ["growth", "Stärkstes Wachstum (30 Tage)"], ["rank", "Bester Chart-Platz"], ["newest", "Neueste"], ["updated", "Zuletzt aktualisiert"], ["name", "Name"]]} />
       <div className="flex h-9 items-center gap-4 px-1 text-sm">
         <label className="flex items-center gap-2">
           <AutoSubmitCheckbox name="charted" value="1" defaultChecked={filters.charted} className="accent-primary" />
@@ -116,13 +128,15 @@ function Select({ label, name, value, options }: { label: string; name: string; 
   );
 }
 
-function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof exploreApps>>["rows"]; showInstalls: boolean }) {
+function ResultTable({ rows, series, showInstalls }: {
+  rows: Awaited<ReturnType<typeof exploreApps>>["rows"]; series: Map<number, number[]>; showInstalls: boolean;
+}) {
   if (rows.length === 0) {
     return <p className="px-4 py-10 text-center text-sm text-muted">Keine Apps für diese Filter.</p>;
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1080px] text-sm">
+      <table className="w-full min-w-[1180px] text-sm">
         <thead className="text-left text-xs text-muted">
           <tr className="border-b border-border">
             <th className="px-4 py-2 font-medium">App</th>
@@ -131,6 +145,7 @@ function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof e
             {showInstalls ? <th className="px-3 py-2 text-right font-medium">Installationen</th> : null}
             <th className="px-3 py-2 text-right font-medium">Downloads/Tag</th>
             <th className="px-3 py-2 text-right font-medium">Umsatz/Monat</th>
+            <th className="px-3 py-2 font-medium">Wachstum 30 T</th>
             <th className="px-3 py-2 font-medium">Chart heute</th>
             <th className="px-3 py-2 font-medium">Veröffentlicht</th>
             <th className="px-4 py-2 text-right font-medium">Preis</th>
@@ -167,10 +182,23 @@ function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof e
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums"
                   title={app.revenue_p50 != null ? `${formatUsd(app.revenue_p10)} – ${formatUsd(app.revenue_p90)} pro Monat, brutto` : undefined}>
-                  <span className="inline-flex items-center gap-1.5">
-                    {app.revenue_p50 != null ? formatUsd(app.revenue_p50) : "–"}
-                    {app.revenue_p50 != null ? <ConfidenceBadge confidence={app.confidence} /> : null}
-                  </span>
+                  {app.revenue_p50 === 0 ? (
+                    <span className="text-muted" title="Weder Kaufpreis noch In-App-Käufe: kein Store-Umsatz (Werbung nicht erfasst)">0 $</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      {app.revenue_p50 != null ? formatUsd(app.revenue_p50) : "–"}
+                      {app.revenue_p50 != null ? <ConfidenceBadge confidence={app.confidence} /> : null}
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2"
+                  title={app.growth_per_day != null ? `+${formatNumber(Math.round(app.growth_per_day))} ${app.growth_metric === "installs" ? "Installationen" : "Bewertungen"} pro Tag` : undefined}>
+                  {app.growth_per_day != null ? (
+                    <span className="flex items-center gap-2">
+                      <Sparkline values={series.get(Number(app.id)) ?? []} width={64} height={22} />
+                      <span className="text-xs tabular-nums text-good">{formatPercent(app.growth)}</span>
+                    </span>
+                  ) : <span className="text-muted">–</span>}
                 </td>
                 <td className="px-3 py-2"><RankBadge rank={app.best_rank} entries={app.chart_entries} /></td>
                 <td className="px-3 py-2 tabular-nums text-muted">{formatDate(app.released_at)}</td>
@@ -184,8 +212,8 @@ function ResultTable({ rows, showInstalls }: { rows: Awaited<ReturnType<typeof e
   );
 }
 
-function Pagination({ filters, total }: { filters: ExploreFilters; total: number }) {
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+function Pagination({ filters, total, capped }: { filters: ExploreFilters; total: number; capped: boolean }) {
+  const pages = capped ? Number.POSITIVE_INFINITY : Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (pages <= 1) return null;
   const href = (page: number) => {
     const params = new URLSearchParams();
@@ -199,7 +227,10 @@ function Pagination({ filters, total }: { filters: ExploreFilters; total: number
   return (
     <nav className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
       {filters.page > 1 ? <Link href={href(filters.page - 1)} className="text-primary hover:underline">← Zurück</Link> : <span />}
-      <span className="text-xs text-muted">{formatNumber((filters.page - 1) * PAGE_SIZE + 1)}–{formatNumber(Math.min(total, filters.page * PAGE_SIZE))} von {formatNumber(total)}</span>
+      <span className="text-xs text-muted">
+        {formatNumber((filters.page - 1) * PAGE_SIZE + 1)}–{formatNumber(capped ? filters.page * PAGE_SIZE : Math.min(total, filters.page * PAGE_SIZE))}
+        {capped ? ` von über ${formatNumber(COUNT_CAP)}` : ` von ${formatNumber(total)}`}
+      </span>
       {filters.page < pages ? <Link href={href(filters.page + 1)} className="text-primary hover:underline">Weiter →</Link> : <span />}
     </nav>
   );

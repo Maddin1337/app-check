@@ -38,6 +38,7 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `iap_products`, `app_monetization` | gelistete In-App-Käufe und abgeleitetes Monetarisierungsmodell (`0003_estimates.sql`) |
 | `app_estimates_daily` | Schätzungen pro App und Tag (monatlich partitioniert) |
 | `app_events` | Ereignisse pro App und Tag (`0006_events.sql`) |
+| `app_chart_summary` | bester Chart-Platz pro App am letzten Chart-Tag, nach jedem Chart-Lauf neu (`0007_chart_summary.sql`) |
 | `sitemap_files` | Fortschritt der Discovery |
 
 ## Einrichtung

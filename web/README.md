@@ -5,7 +5,7 @@ Arbeitstitel „app-check“, eigenes Design (Iris-Violett, Geist), bewusst ande
 
 | Seite | Inhalt |
 |---|---|
-| `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie, Veröffentlichung, Bewertungen, Preis, geschätzter Umsatz, „nur in Charts“, Sortierung nach Bewertungen, geschätztem Umsatz bzw. Downloads, bestem Chart-Platz, Neuheit. Filter stehen in der URL und sind teilbar |
+| `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie (ein- und ausschließen), Sprache, Veröffentlichung, Bewertungen und Ø-Bewertung, Preis, In-App-Käufe, geschätzter Umsatz, Publisher, „nur in Charts“; Sortierung nach Bewertungen, geschätztem Umsatz bzw. Downloads, Wachstum (30 Tage, mit Verlaufskurve), bestem Chart-Platz, Neuheit. Die Trefferzahl wird ab 10.000 nicht mehr exakt gezählt. Filter stehen in der URL und sind teilbar |
 | `/app/[platform]/[storeId]` | App-Detail: Kennzahlen (inkl. Tage in den Top 100, Länder mit Chartplatz, Spitzenumsatz pro Tag, beobachtete Versionen), geschätzte Downloads und Umsatz (Spanne, Methode, Konfidenz), In-App-Käufe mit Preisen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
 | `/charts` | Rankings pro Land, Chart, Kategorie und Gerät |
 | `/feed` | Ereignisse des letzten Tages (Aufstieg, Abstieg, neu in den Top 100, Bewertungs-/Installations-Sprung, Preis, Version), Filter Art und Land; auch als Karte auf der App-Seite |
@@ -28,7 +28,7 @@ und werden pro Request frisch gerendert.
 ## Bekannte Grenzen des Prototyps
 
 - Noch kein Login, keine Bezahlung. Schätzungen für Downloads und Umsatz sind Modell v0 (früh, unkalibriert, iOS nur US-Store).
-- „Bester Chart-Platz“ wird pro Request aus `chart_ranks` aggregiert. Bei vielen Märkten und Tagen gehört das in
-  eine täglich berechnete Tabelle.
+- „Bester Chart-Platz“ kommt aus `app_chart_summary`, die der Crawler nach jedem Chart-Lauf neu befüllt.
+- Katalog-Übersicht und Kategorienliste sind eine Stunde zwischengespeichert (`'use cache'`).
 - Die Suche nutzt den Trigramm-Index auf dem Namen; mit „Inkl. ohne Metadaten“ wird zusätzlich der Slug
   durchsucht, das ist langsamer.

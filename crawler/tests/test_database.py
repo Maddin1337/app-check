@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from appcrawl import db
-from appcrawl.charts import parse_chart_page, store_charts
+from appcrawl.charts import parse_chart_page, refresh_chart_summary, store_charts
 from appcrawl.import_csv import import_csv
 from appcrawl.refresh_ios import store_batch
 from appcrawl.tiers import plan_tiers
@@ -29,7 +29,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events", "0007_chart_summary"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -60,6 +60,9 @@ class DatabaseFlow(unittest.TestCase):
             chart: (ranked, "apple_web") for chart, ranked in parse_chart_page(CHART_PAGE).items()
         })
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM chart_ranks"), 5)
+        self.assertEqual(refresh_chart_summary(self.connection), 5)
+        self.assertEqual(self.scalar("SELECT best_rank FROM app_chart_summary s JOIN apps a ON a.id = s.app_id "
+                                     "WHERE a.store_id = '570060128'"), 1)
 
         found = store_batch(self.connection, ["570060128", "9"], [{
             "trackId": 570060128, "trackName": "Duolingo", "userRatingCount": 5531166, "averageUserRating": 4.7,

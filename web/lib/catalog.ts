@@ -65,3 +65,11 @@ export function genreName(id: string) {
 }
 
 export const DEVICES: Record<string, string> = { iphone: "iPhone", ipad: "iPad", mac: "Mac" };
+
+// Languages an iOS app can list (ISO 639-1, as the Lookup API returns them), for the explorer filter.
+export const LANGUAGES: Record<string, string> = {
+  EN: "Englisch", DE: "Deutsch", FR: "Französisch", ES: "Spanisch", IT: "Italienisch", PT: "Portugiesisch",
+  NL: "Niederländisch", SV: "Schwedisch", DA: "Dänisch", NB: "Norwegisch", FI: "Finnisch", PL: "Polnisch",
+  CS: "Tschechisch", TR: "Türkisch", RU: "Russisch", UK: "Ukrainisch", AR: "Arabisch", HE: "Hebräisch",
+  HI: "Hindi", JA: "Japanisch", KO: "Koreanisch", ZH: "Chinesisch", TH: "Thai", VI: "Vietnamesisch", ID: "Indonesisch",
+};
