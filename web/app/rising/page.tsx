@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Form from "next/form";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
-import { AutoSubmitSelect } from "@/components/auto-submit";
+import { ParamMenu, ParamSegmented } from "@/components/url-controls";
 import { AppIcon, Card, PlatformBadge, Skeleton, Sparkline } from "@/components/ui";
 import { CHARTS, countryName, genreName } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate, formatNumber, formatPercent } from "@/lib/format";
@@ -80,14 +79,18 @@ async function Growth({ f }: { f: RisingFilters }) {
 
   return (
     <>
-      <Form action="/rising" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-        <Select label="Plattform" name="platform" value={f.platform} options={[["ios", "iOS (Bewertungen)"], ["android", "Android (Installationen)"]]} />
-        <Select label="Zeitraum" name="window" value={String(f.window)} options={[["30", "30 Tage"], ["7", "7 Tage"]]} />
-        <Select label="Sortierung" name="sort" value={f.sort}
-          options={[["absolute", "Zuwachs pro Tag"], ["relative", `Zuwachs in % (ab ${formatNumber(RELATIVE_MIN_BASE[f.platform])})`]]} />
-        <Select label="Kategorie" name="category" value={f.category}
-          options={[["", "Alle"], ...categoryList.map((c) => [c.category, `${c.category} (${formatCompact(c.apps)})`] as [string, string])]} />
-      </Form>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <ParamSegmented label="Plattform" name="platform" value={f.platform} fallback="ios" reset={["category"]}
+          options={[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]} />
+        <ParamSegmented label="Zeitraum" name="window" value={String(f.window)} fallback="30"
+          options={[{ value: "30", label: "30 Tage" }, { value: "7", label: "7 Tage" }]} />
+        <ParamMenu label="Kategorie" name="category" value={f.category} searchable
+          options={[{ value: "", label: "Alle Kategorien" }, ...categoryList.map((c) => ({ value: c.category, label: c.category, hint: formatCompact(c.apps) }))]} />
+        <div className="ml-auto">
+          <ParamMenu label="Sortierung" name="sort" value={f.sort} fallback="absolute" icon="sort" align="right"
+            options={[{ value: "absolute", label: "Zuwachs pro Tag" }, { value: "relative", label: `Zuwachs in % (ab ${formatNumber(RELATIVE_MIN_BASE[f.platform])})` }]} />
+        </div>
+      </div>
 
       <Card
         title={`${formatNumber(total)} wachsende Apps`}
@@ -172,13 +175,14 @@ async function ChartMovers({ f }: { f: RisingFilters }) {
 
   return (
     <>
-      <Form action="/rising" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-        <input type="hidden" name="view" value="charts" />
-        <Select label="Land" name="country" value={country} options={countries.map((c) => [c, countryName(c)])} />
-        <Select label="Chart" name="chart" value={f.chart} options={Object.entries(CHARTS)} />
-        <Select label="Kategorie" name="genre" value={genre} options={sortedGenres.map((g) => [g, genreName(g)])} />
-        <Select label="Gerät" name="device" value={f.device} options={[["iphone", "iPhone"], ["ipad", "iPad"], ["mac", "Mac"]]} />
-      </Form>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <ParamSegmented label="Chart" name="chart" value={f.chart} fallback="top-free" options={Object.entries(CHARTS).map(([value, label]) => ({ value, label }))} />
+        <ParamSegmented label="Gerät" name="device" value={f.device} fallback="iphone" options={[{ value: "iphone", label: "iPhone", icon: "iphone" }, { value: "ipad", label: "iPad", icon: "ipad" }, { value: "mac", label: "Mac", icon: "mac" }]} />
+        <ParamMenu label="Land" name="country" value={country} fallback="de" icon="globe" searchable
+          options={countries.map((c) => ({ value: c, label: countryName(c), hint: c.toUpperCase() }))} />
+        <ParamMenu label="Kategorie" name="genre" value={genre} fallback="36" searchable
+          options={sortedGenres.map((g) => ({ value: g, label: genreName(g) }))} />
+      </div>
 
       <Card
         title={`${CHARTS[f.chart]} · ${genreName(genre)} · ${countryName(country)}`}
@@ -224,18 +228,5 @@ async function ChartMovers({ f }: { f: RisingFilters }) {
         )}
       </Card>
     </>
-  );
-}
-
-function Select({ label, name, value, options }: { label: string; name: string; value: string; options: [string, string][] }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-muted">
-      {label}
-      <AutoSubmitSelect name={name} defaultValue={value} className="field max-w-64">
-        {options.map(([optionValue, text]) => (
-          <option key={optionValue} value={optionValue}>{text}</option>
-        ))}
-      </AutoSubmitSelect>
-    </label>
   );
 }

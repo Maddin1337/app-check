@@ -453,7 +453,7 @@ export type EventRow = {
   revenue_p50: number | null;
 };
 
-export type FeedFilters = { kind: EventKind | ""; country: string; relevant: boolean; page: number };
+export type FeedFilters = { kind: EventKind | ""; country: string; relevant: boolean; platform: "" | "ios" | "android"; page: number };
 
 export function parseFeedFilters(params: Params): FeedFilters {
   const kind = one(params.kind);
@@ -461,6 +461,7 @@ export function parseFeedFilters(params: Params): FeedFilters {
     kind: (EVENT_KINDS as readonly string[]).includes(kind) ? (kind as EventKind) : "",
     country: one(params.country).slice(0, 2).toLowerCase() || "us",
     relevant: one(params.all) !== "1",
+    platform: one(params.platform) === "ios" || one(params.platform) === "android" ? (one(params.platform) as "ios" | "android") : "",
     page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
   };
 }
@@ -471,6 +472,7 @@ export async function feedEvents(f: FeedFilters) {
     WHERE ev.day = (SELECT MAX(day) FROM app_events)
       AND (ev.country = ${f.country} OR ev.country IN ('ww', ''))
       ${f.kind ? sql`AND ev.kind = ${f.kind}` : sql``}
+      ${f.platform ? sql`AND a.platform = ${f.platform}` : sql``}
       ${f.relevant ? sql`AND (e.app_id IS NOT NULL OR a.rating_count >= 1000)` : sql``}`;
   const rows = await sql<EventRow[]>`
     WITH e AS (${latestEstimates})
@@ -486,6 +488,7 @@ export async function feedEvents(f: FeedFilters) {
     FROM app_events ev JOIN apps a ON a.id = ev.app_id LEFT JOIN e ON e.app_id = a.id
     WHERE ev.day = (SELECT MAX(day) FROM app_events)
       AND (ev.country = ${f.country} OR ev.country IN ('ww', ''))
+      ${f.platform ? sql`AND a.platform = ${f.platform}` : sql``}
       ${f.relevant ? sql`AND (e.app_id IS NOT NULL OR a.rating_count >= 1000)` : sql``}
     GROUP BY ev.kind`;
   const countries = await sql<{ country: string }[]>`

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Form from "next/form";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { AutoSubmitSelect } from "@/components/auto-submit";
+import { ParamMenu, ParamSegmented } from "@/components/url-controls";
 import { AppIcon, Card, Skeleton } from "@/components/ui";
 import { displayName, formatCompact, formatEstimate, formatNumber, formatUsd } from "@/lib/format";
 import { PAGE_SIZE, publisherCategories, publisherRanking } from "@/lib/queries";
@@ -50,24 +49,13 @@ async function Publishers({ searchParams }: { searchParams: PageProps<"/publishe
 
   return (
     <>
-      <Form action="/publishers" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Plattform
-          <AutoSubmitSelect name="platform" defaultValue={platform} className="field">
-            <option value="ios">iOS (US App Store)</option>
-            <option value="android">Android (weltweit)</option>
-          </AutoSubmitSelect>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Kategorie
-          <AutoSubmitSelect name="category" defaultValue={category} className="field max-w-64">
-            <option value="">Alle</option>
-            {categoryList.map((c) => (
-              <option key={c.category} value={c.category}>{c.category} ({formatCompact(c.apps)})</option>
-            ))}
-          </AutoSubmitSelect>
-        </label>
-      </Form>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <ParamSegmented label="Plattform" name="platform" value={platform} fallback="ios" reset={["category"]}
+          options={[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]} />
+        <ParamMenu label="Kategorie" name="category" value={category} searchable
+          options={[{ value: "", label: "Alle Kategorien" }, ...categoryList.map((c) => ({ value: c.category, label: c.category, hint: formatCompact(c.apps) }))]} />
+        <span className="text-xs text-muted">{platform === "ios" ? "US App Store" : "weltweit"}</span>
+      </div>
 
       <Card title={`${formatNumber(total)} Publisher mit geschätztem Umsatz`}>
         {rows.length === 0 ? (

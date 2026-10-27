@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Form from "next/form";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
-import { AutoSubmitCheckbox, AutoSubmitSelect } from "@/components/auto-submit";
+import { ParamMenu, ParamSegmented } from "@/components/url-controls";
 import { EVENT_LABEL, EventText } from "@/components/event-text";
 import { AppIcon, Card, PlatformBadge, Skeleton } from "@/components/ui";
 import { countryName } from "@/lib/catalog";
@@ -36,6 +35,7 @@ function href(f: FeedFilters, changes: Partial<FeedFilters>) {
   if (next.kind) query.set("kind", next.kind);
   if (next.country !== "us") query.set("country", next.country);
   if (!next.relevant) query.set("all", "1");
+  if (next.platform) query.set("platform", next.platform);
   if (next.page > 1) query.set("page", String(next.page));
   return `/feed${query.size ? `?${query}` : ""}`;
 }
@@ -56,19 +56,14 @@ async function Feed({ searchParams }: { searchParams: PageProps<"/feed">["search
           </Chip>
         ))}
       </nav>
-      <Form action="/feed" className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-3">
-        {f.kind ? <input type="hidden" name="kind" value={f.kind} /> : null}
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Land (Charts, iOS-Store)
-          <AutoSubmitSelect name="country" defaultValue={f.country} className="field max-w-56">
-            {(countries.length ? countries : ["us"]).map((c) => <option key={c} value={c}>{countryName(c)}</option>)}
-          </AutoSubmitSelect>
-        </label>
-        <label className="flex h-9 items-center gap-2 text-sm" title="Ohne Haken nur Apps mit Schätzung oder mindestens 1.000 Bewertungen">
-          <AutoSubmitCheckbox name="all" value="1" defaultChecked={!f.relevant} className="accent-primary" />
-          Auch kleine Apps
-        </label>
-      </Form>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <ParamSegmented label="Plattform" name="platform" value={f.platform}
+          options={[{ value: "", label: "Alle", icon: "all" }, ...[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]]} />
+        <ParamSegmented label="Apps" name="all" value={f.relevant ? "" : "1"}
+          options={[{ value: "", label: "Relevante Apps" }, { value: "1", label: "Alle Apps" }]} />
+        <ParamMenu label="Land" name="country" value={f.country} fallback="us" icon="globe" searchable
+          options={(countries.length ? countries : ["us"]).map((c) => ({ value: c, label: countryName(c), hint: c.toUpperCase() }))} />
+      </div>
 
       <Card
         title={`${formatNumber(total)} Ereignisse`}

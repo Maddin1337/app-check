@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Form from "next/form";
 import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
+import { Suspense } from "react";
 
-import { AutoSubmitSelect } from "@/components/auto-submit";
+import { ParamMenu, ParamSegmented } from "@/components/url-controls";
 import { AppIcon, Card, Skeleton } from "@/components/ui";
 import { CHARTS, countryName, genreName } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate } from "@/lib/format";
@@ -48,30 +47,14 @@ async function Charts({ searchParams }: { searchParams: PageProps<"/charts">["se
 
   return (
     <>
-      <Form action="/charts" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-        <Field label="Land">
-          <AutoSubmitSelect name="country" defaultValue={country} className="field">
-            {countries.map((c) => <option key={c} value={c}>{countryName(c)}</option>)}
-          </AutoSubmitSelect>
-        </Field>
-        <Field label="Chart">
-          <AutoSubmitSelect name="chart" defaultValue={chart} className="field">
-            {Object.entries(CHARTS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </AutoSubmitSelect>
-        </Field>
-        <Field label="Kategorie">
-          <AutoSubmitSelect name="genre" defaultValue={genre} className="field">
-            {sortedGenres.map((g) => <option key={g} value={g}>{genreName(g)}</option>)}
-          </AutoSubmitSelect>
-        </Field>
-        <Field label="Gerät">
-          <AutoSubmitSelect name="device" defaultValue={device} className="field">
-            <option value="iphone">iPhone</option>
-            <option value="ipad">iPad</option>
-            <option value="mac">Mac</option>
-          </AutoSubmitSelect>
-        </Field>
-      </Form>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+        <ParamSegmented label="Chart" name="chart" value={chart} fallback="top-free" options={Object.entries(CHARTS).map(([value, label]) => ({ value, label }))} />
+        <ParamSegmented label="Gerät" name="device" value={device} fallback="iphone" options={[{ value: "iphone", label: "iPhone", icon: "iphone" }, { value: "ipad", label: "iPad", icon: "ipad" }, { value: "mac", label: "Mac", icon: "mac" }]} />
+        <ParamMenu label="Land" name="country" value={country} fallback="de" icon="globe" searchable
+          options={countries.map((c) => ({ value: c, label: countryName(c), hint: c.toUpperCase() }))} />
+        <ParamMenu label="Kategorie" name="genre" value={genre} fallback="36" searchable
+          options={sortedGenres.map((g) => ({ value: g, label: genreName(g) }))} />
+      </div>
 
       <Card
         title={`${CHARTS[chart]} · ${genreName(genre)} · ${countryName(country)}`}
@@ -107,8 +90,4 @@ async function Charts({ searchParams }: { searchParams: PageProps<"/charts">["se
       </Card>
     </>
   );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="flex flex-col gap-1 text-xs text-muted">{label}{children}</label>;
 }
