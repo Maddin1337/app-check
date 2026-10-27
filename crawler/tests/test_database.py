@@ -14,6 +14,7 @@ from appcrawl.tiers import plan_tiers
 from appcrawl.trends import compute_trends
 from appcrawl.calibrate import calibrate
 from appcrawl.estimates import compute_estimates
+from appcrawl.events import compute_events
 from appcrawl.iap import store_iap
 
 from test_parsing import CHART_PAGE
@@ -28,7 +29,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])
@@ -282,6 +283,55 @@ class DatabaseFlow(unittest.TestCase):
         self.assertEqual(duolingo[1], "medium")
         # Rank 1 lies above the best anchor (rank 22): extrapolated, so low confidence.
         self.assertEqual(self.scalar("SELECT confidence FROM app_estimates_daily WHERE app_id = %s", ids["9"]), "low")
+
+    def test_events(self):
+        from datetime import date, timedelta
+
+        today, yesterday = date.today(), date.today() - timedelta(days=1)
+        for table in ("chart_ranks", "app_metrics_daily"):
+            db.ensure_month_partition(self.connection, table, today)
+            db.ensure_month_partition(self.connection, table, yesterday)
+        db.upsert_app_keys(self.connection, "ios", "chart", {str(n): (None, None) for n in range(1, 6)})
+        db.upsert_app_keys(self.connection, "android", "sitemap:play", {"com.a": (None, None)})
+        ids = {s: i for s, i in self.connection.execute("SELECT store_id, id FROM apps")}
+        ranks = [  # (day, chart, rank, store_id)
+            (yesterday, "top-free", 80, "1"), (today, "top-free", 50, "1"),    # +30: rank_up
+            (yesterday, "top-free", 10, "2"), (today, "top-free", 35, "2"),    # -25: rank_down
+            (yesterday, "top-free", 150, "3"), (today, "top-free", 95, "3"),   # +55 and into the Top 100
+            (today, "top-grossing", 40, "4"),                                  # new in the chart: Top 100 entry
+            (yesterday, "top-free", 5, "5"), (today, "top-free", 8, "5"),      # small move: nothing
+        ]
+        self.connection.cursor().executemany(
+            """INSERT INTO chart_ranks (captured_on, captured_at, platform, country, device, chart, genre_id, rank,
+                                        app_id, source)
+               VALUES (%s, now(), 'ios', 'us', 'iphone', %s, '36', %s, %s, 'apple_web')""",
+            [(d, c, r, ids[s]) for d, c, r, s in ranks])
+        metrics = [  # (day, store_id, country, ratings, installs, price, version)
+            (yesterday, "1", "us", 10_000, None, 0, "1.0"), (today, "1", "us", 12_000, None, 0, "1.1"),
+            (yesterday, "2", "us", 1_000_000, None, 4.99, "2.0"), (today, "2", "us", 1_000_500, None, 6.99, "2.0"),
+            (yesterday, "com.a", "ww", None, 100_000, 0, "3"), (today, "com.a", "ww", None, 103_000, 0, "3"),
+            (today, "5", "us", 50, None, 0, "1.0"),  # first observation: nothing to compare
+        ]
+        self.connection.cursor().executemany(
+            """INSERT INTO app_metrics_daily (day, app_id, country, rating_count, installs_exact, price, version,
+                                              fetched_at) VALUES (%s, %s, %s, %s, %s, %s, %s, now())""",
+            [(d, ids[s], c, r, i, p, v) for d, s, c, r, i, p, v in metrics])
+        self.connection.commit()
+
+        result = compute_events(self.connection)
+        self.assertEqual((result["rank_up"], result["rank_down"], result["top100_entry"]), (2, 1, 2))
+        self.assertEqual((result["ratings_spike"], result["installs_spike"], result["price_change"],
+                          result["new_version"]), (1, 1, 1, 1))
+        events = {(store, kind): (old, new) for store, kind, old, new in self.connection.execute(
+            """SELECT a.store_id, e.kind, e.old_value, e.new_value FROM app_events e JOIN apps a ON a.id = e.app_id""")}
+        self.assertEqual(events[("1", "rank_up")], ("80", "50"))
+        self.assertEqual(events[("4", "top100_entry")], (None, "40"))
+        self.assertEqual(events[("2", "price_change")], ("4.99", "6.99"))
+        self.assertEqual(events[("1", "new_version")], ("1.0", "1.1"))
+        self.assertNotIn(("2", "ratings_spike"), events)  # +500 on a million is not a spike
+        # Running again replaces the day's rows instead of adding to them.
+        compute_events(self.connection)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM app_events"), 9)
 
 
 if __name__ == "__main__":

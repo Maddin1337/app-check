@@ -411,3 +411,74 @@ export async function publisherCategories(platform: string) {
     WHERE a.platform = ${platform} AND a.category IS NOT NULL AND e.revenue_p50 > 0
     GROUP BY a.category ORDER BY apps DESC LIMIT 80`;
 }
+
+export const EVENT_KINDS = ["top100_entry", "rank_up", "rank_down", "ratings_spike", "installs_spike", "price_change",
+  "new_version"] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+export type EventRow = {
+  day: Date;
+  previous_day: Date | null;
+  kind: EventKind;
+  country: string;
+  chart: string;
+  old_value: string | null;
+  new_value: string | null;
+  magnitude: number;
+  app_id: number;
+  platform: string;
+  store_id: string;
+  name: string | null;
+  slug: string | null;
+  icon_url: string | null;
+  developer_name: string | null;
+  revenue_p50: number | null;
+};
+
+export type FeedFilters = { kind: EventKind | ""; country: string; relevant: boolean; page: number };
+
+export function parseFeedFilters(params: Params): FeedFilters {
+  const kind = one(params.kind);
+  return {
+    kind: (EVENT_KINDS as readonly string[]).includes(kind) ? (kind as EventKind) : "",
+    country: one(params.country).slice(0, 2).toLowerCase() || "us",
+    relevant: one(params.all) !== "1",
+    page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
+  };
+}
+
+/** Events of the latest event day; "relevant" keeps apps with an estimate or at least 1,000 ratings. */
+export async function feedEvents(f: FeedFilters) {
+  const filter = sql`
+    WHERE ev.day = (SELECT MAX(day) FROM app_events)
+      AND (ev.country = ${f.country} OR ev.country IN ('ww', ''))
+      ${f.kind ? sql`AND ev.kind = ${f.kind}` : sql``}
+      ${f.relevant ? sql`AND (e.app_id IS NOT NULL OR a.rating_count >= 1000)` : sql``}`;
+  const rows = await sql<EventRow[]>`
+    WITH e AS (${latestEstimates})
+    SELECT ev.day, ev.previous_day, ev.kind, ev.country, ev.chart, ev.old_value, ev.new_value, ev.magnitude,
+           a.id AS app_id, a.platform, a.store_id, a.name, a.slug, a.icon_url, a.developer_name, e.revenue_p50
+    FROM app_events ev JOIN apps a ON a.id = ev.app_id LEFT JOIN e ON e.app_id = a.id
+    ${filter}
+    ORDER BY array_position(${[...EVENT_KINDS]}::text[], ev.kind), ev.magnitude DESC, a.id
+    LIMIT ${PAGE_SIZE} OFFSET ${(f.page - 1) * PAGE_SIZE}`;
+  const counts = await sql<{ kind: EventKind; n: number }[]>`
+    WITH e AS (${latestEstimates})
+    SELECT ev.kind, COUNT(*)::int AS n
+    FROM app_events ev JOIN apps a ON a.id = ev.app_id LEFT JOIN e ON e.app_id = a.id
+    WHERE ev.day = (SELECT MAX(day) FROM app_events)
+      AND (ev.country = ${f.country} OR ev.country IN ('ww', ''))
+      ${f.relevant ? sql`AND (e.app_id IS NOT NULL OR a.rating_count >= 1000)` : sql``}
+    GROUP BY ev.kind`;
+  const countries = await sql<{ country: string }[]>`
+    SELECT DISTINCT country FROM app_events WHERE day = (SELECT MAX(day) FROM app_events) AND length(country) = 2
+      AND country <> 'ww' ORDER BY country`;
+  return { rows, counts: Object.fromEntries(counts.map((c) => [c.kind, c.n])) as Partial<Record<EventKind, number>>,
+           countries: countries.map((c) => c.country) };
+}
+
+export async function appEvents(appId: number) {
+  return sql<Omit<EventRow, "app_id" | "platform" | "store_id" | "name" | "slug" | "icon_url" | "developer_name" | "revenue_p50">[]>`
+    SELECT day, previous_day, kind, country, chart, old_value, new_value, magnitude FROM app_events
+    WHERE app_id = ${appId} ORDER BY day DESC, magnitude DESC LIMIT 30`;
+}

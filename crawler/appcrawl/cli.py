@@ -9,6 +9,7 @@ from .charts import DEFAULT_COUNTRIES, collect_charts
 from .calibrate import calibrate
 from .discover import discover
 from .estimates import compute_estimates
+from .events import compute_events
 from .iap import refresh_iap
 from .import_csv import import_csv
 from .refresh_android import refresh_android
@@ -121,6 +122,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("trends", help="recompute 7- and 30-day growth from the daily metrics")
     sub.add_parser("estimates", help="today's downloads and revenue estimates (model v0, ranges)")
     sub.add_parser("calibrate", help="fit the Top Grossing curve on ground truth (appcrawl/data/ground_truth.csv)")
+    sub.add_parser("events", help="today's app events: rank jumps, Top 100 entries, spikes, price and version changes")
 
     p = sub.add_parser("refresh-iap", help="in-app purchase prices from App Store pages, monetization model per app")
     p.add_argument("--country", default="us")
@@ -157,6 +159,8 @@ def main(argv: list[str] | None = None) -> None:
             print(plan_tiers(connection), file=sys.stderr)
         elif args.command == "trends":
             print(compute_trends(connection), file=sys.stderr)
+        elif args.command == "events":
+            print(compute_events(connection), file=sys.stderr)
         elif args.command == "calibrate":
             print(calibrate(connection), file=sys.stderr)
         elif args.command == "estimates":

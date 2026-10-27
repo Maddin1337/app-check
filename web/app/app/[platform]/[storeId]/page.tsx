@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
+import { EVENT_LABEL, EventText } from "@/components/event-text";
 import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton, Stat } from "@/components/ui";
 import { CHARTS, DEVICES, countryName, genreName } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPrice, formatUsd, storeUrl } from "@/lib/format";
-import { appDetail } from "@/lib/queries";
+import { appDetail, appEvents } from "@/lib/queries";
 
 export default function AppPage({ params }: PageProps<"/app/[platform]/[storeId]">) {
   return (
@@ -24,6 +25,7 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
   const detail = await appDetail(platform, decodeURIComponent(storeId));
   if (!detail) notFound();
   const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis } = detail;
+  const events = await appEvents(app.id);
   const name = displayName(app.name, app.slug, app.store_id);
 
   return (
@@ -157,6 +159,21 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
                 </table>
               ) : null}
             </div>
+          )}
+        </Card>
+
+        <Card title="Ereignisse" aside={<span className="text-xs text-muted">letzte 30</span>}>
+          {events.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted">Noch keine Ereignisse erfasst.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {events.map((event) => (
+                <li key={`${event.day.toISOString()}-${event.kind}-${event.country}-${event.chart}`} className="flex gap-3 px-4 py-2 text-sm">
+                  <span className="w-20 shrink-0 tabular-nums text-muted">{formatDate(event.day)}</span>
+                  <span className="min-w-0 flex-1"><span className="font-medium">{EVENT_LABEL[event.kind]}:</span> <EventText event={event} /></span>
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
 

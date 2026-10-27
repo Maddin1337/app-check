@@ -18,6 +18,7 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `plan-tiers` | eigene Daten | Wie oft jede App aktualisiert wird (T0 täglich … T3 selten) |
 | `trends` | eigene Messwerte | Wachstum über 7 und 30 Tage: iOS Bewertungen pro Store, Android exakte Installationen |
 | `refresh-iap` | App-Store-Seiten (laut robots.txt erlaubt) | Liste der In-App-Käufe mit Preis und Monetarisierung pro App (Abo, IAP, Kauf-App, gratis); Android aus der Preisspanne der Detailseite |
+| `events` | eigene Daten | Ereignisse pro App gegenüber der vorigen Messung: Sprünge ≥ 20 Plätze und Top-100-Einstiege in den Gesamtcharts, Bewertungs- und Installations-Sprünge, Preis- und Versionswechsel |
 | `estimates` | eigene Daten | **Schätzmodell v0:** Downloads pro Tag und Umsatz pro Monat (brutto/netto) als Spanne P10–P90 mit Konfidenz |
 
 **Android hat keine Charts:** Die Ranglisten lädt Google Play nur über die gesperrte interne Schnittstelle
@@ -36,6 +37,7 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `app_trends` | Zuwachs pro App über 7 und 30 Tage, täglich neu berechnet (`0002_trends.sql`) |
 | `iap_products`, `app_monetization` | gelistete In-App-Käufe und abgeleitetes Monetarisierungsmodell (`0003_estimates.sql`) |
 | `app_estimates_daily` | Schätzungen pro App und Tag (monatlich partitioniert) |
+| `app_events` | Ereignisse pro App und Tag (`0006_events.sql`) |
 | `sitemap_files` | Fortschritt der Discovery |
 
 ## Einrichtung
@@ -72,6 +74,7 @@ $PY -m appcrawl trends                             # Wachstum 7/30 Tage, braucht
 $PY -m appcrawl refresh-iap --limit 8000           # IAP-Preise, wichtige iOS-Apps wöchentlich (~4,5 h)
 $PY -m appcrawl calibrate                          # Grossing-Kurve an Vergleichswerten eichen (data/ground_truth.csv)
 $PY -m appcrawl estimates                          # Downloads und Umsatz, Modell v0
+$PY -m appcrawl events                             # Ereignisse gegenüber der vorigen Messung
 
 # Überblick, Export, Tests
 $PY -m appcrawl stats
@@ -113,7 +116,7 @@ Zeitplan als Vorlage: [`deploy/crontab.example`](deploy/crontab.example).
 |---|---|---|
 | 00:40 | `discover ios --only-new --rescan` (sonntags voller Rescan) | Minuten (voll ~30 min) |
 | 01:05 | `charts --grossing-rss` + `plan-tiers` | ~1 h für 40 Märkte |
-| 02:15 | `refresh-ios`, danach `--missing`, dann `trends`, `calibrate` und `estimates` | ~8–9 h für den ganzen Katalog, danach Minuten |
+| 02:15 | `refresh-ios`, danach `--missing`, dann `trends`, `calibrate`, `estimates` und `events` | ~8–9 h für den ganzen Katalog, danach Minuten |
 | 13:00 | `refresh-iap --limit 8000`, danach `estimates` | ~4,5 h bei 0,5 Seiten/s |
 | alle 30 min | `refresh-android --limit 20000` | läuft durch, solange etwas fällig ist |
 | So 03:00 | `discover android` | ~24 h bei 1/s |
