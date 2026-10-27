@@ -134,7 +134,7 @@ def refresh_ios(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_lookup, batch, storefront, limiter): (storefront, batch) for storefront, batch in jobs}
         for future in as_completed(futures):
-            storefront, batch = futures[future]
+            storefront, batch = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
                 results = future.result()
             except FetchError as failure:

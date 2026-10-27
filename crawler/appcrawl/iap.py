@@ -239,7 +239,7 @@ def refresh_iap(connection: psycopg.Connection, country: str, rate: float, worke
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(load, app): app for app in apps}
         for future in as_completed(futures):
-            app_id, store_id, price = futures[future]
+            app_id, store_id, price = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
                 status, items = future.result()
             except FetchError as failure:

@@ -167,7 +167,7 @@ def discover(
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_process, platform, url, limiter): (url, kind) for url, kind in files}
         for future in as_completed(futures):
-            url, kind = futures[future]
+            url, kind = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
                 status, size, locs, apps = future.result()
                 error = None

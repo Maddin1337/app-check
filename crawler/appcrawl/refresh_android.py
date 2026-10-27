@@ -144,7 +144,7 @@ def refresh_android(connection: psycopg.Connection, country: str, rate: float, w
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_details, p, country, limiter, parse_dom): p for p in packages}
         for future in as_completed(futures):
-            package = futures[future]
+            package = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
                 details = future.result()
                 status = "active" if details else "not_found"
