@@ -61,6 +61,13 @@ async function Explorer({ searchParams }: { searchParams: PageProps<"/explore">[
 function Filters({ filters, categoryList }: { filters: ExploreFilters; categoryList: { category: string; apps: number }[] }) {
   return (
     <Form action="/explore" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
+      {filters.developer ? (
+        <div className="flex w-full items-center gap-2 text-sm">
+          <input type="hidden" name="developer" value={filters.developer} />
+          <span className="rounded-md bg-primary-soft px-2 py-1 text-primary">Nur Apps eines Publishers ({filters.developer})</span>
+          <Link href={`/explore?platform=${filters.platform}`} className="text-xs text-muted hover:text-text">Filter entfernen</Link>
+        </div>
+      ) : null}
       <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted">
         Suche
         <input name="q" defaultValue={filters.q} placeholder="Name, Slug oder Store-ID" className="field" />

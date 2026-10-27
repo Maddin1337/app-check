@@ -23,7 +23,7 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
   if (platform !== "ios" && platform !== "android") notFound();
   const detail = await appDetail(platform, decodeURIComponent(storeId));
   if (!detail) notFound();
-  const { app, ranks, metrics, siblings, estimate, monetization, iaps } = detail;
+  const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis } = detail;
   const name = displayName(app.name, app.slug, app.store_id);
 
   return (
@@ -41,7 +41,16 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
             ) : null}
           </div>
           <p className="mt-1 text-sm text-muted">
-            {[app.developer_name, app.category, app.content_rating].filter(Boolean).join(" · ") || "Noch keine Metadaten abgerufen"}
+            {app.developer_name ? (
+              app.developer_id ? (
+                <Link href={`/explore?platform=${app.platform}&developer=${encodeURIComponent(app.developer_id)}&sort=revenue`}
+                  className="hover:text-primary">{app.developer_name}</Link>
+              ) : app.developer_name
+            ) : null}
+            {[app.category, app.content_rating].filter(Boolean).map((part, i) => (
+              <span key={i}>{app.developer_name || i > 0 ? " · " : ""}{part}</span>
+            ))}
+            {!app.developer_name && !app.category ? "Noch keine Metadaten abgerufen" : null}
           </p>
           {siblings.length ? (
             <p className="mt-1 text-xs text-muted">
@@ -74,6 +83,17 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
         <Stat label="Preis" value={formatPrice(app.price, app.currency)} hint={app.iap_price_range ?? undefined} />
         <Stat label="Veröffentlicht" value={formatDate(app.released_at)} />
         <Stat label="Letztes Update" value={formatDate(app.store_updated_at)} hint={app.version ? `Version ${app.version}` : undefined} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="Tage in den Top 100" value={formatNumber(kpis.days_top100)}
+          hint={kpis.first_chart_day ? `Charts erfasst seit ${formatDate(kpis.first_chart_day)}` : "noch nie in einem Chart"} />
+        <Stat label="Länder mit Chartplatz" value={formatNumber(kpis.countries_today)}
+          hint={kpis.countries_today ? "am letzten Chart-Tag der App" : "–"} />
+        <Stat label="Spitzenumsatz pro Tag" value={kpis.peak_revenue_day == null ? "–" : formatUsd(kpis.peak_revenue_day)}
+          hint={kpis.peak_day ? `geschätzt, am ${formatDate(kpis.peak_day)}` : "noch keine Schätzung"} />
+        <Stat label="Versionen beobachtet" value={formatNumber(kpis.versions_seen)}
+          hint={`an ${formatNumber(kpis.observed_days)} Messtag(en)`} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -218,7 +238,7 @@ const METHOD_TEXT: Record<string, string> = {
 };
 
 const REVENUE_METHOD_TEXT: Record<string, string> = {
-  grossing: "Umsatz aus dem Platz im US-Top-Grossing-Chart über eine Rangkurve (Startwerte, noch nicht kalibriert).",
+  grossing: "Umsatz aus dem Platz im US-Top-Grossing-Chart über eine Rangkurve, geeicht an berichteten Umsätzen börsennotierter App-Firmen.",
   "grossing-category": "Umsatz aus dem Platz in einem US-Top-Grossing-Kategorie-Chart, skaliert über Apps im Gesamtchart.",
 };
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 export const NAV_ITEMS = [
   { href: "/explore", label: "App-Explorer", match: ["/explore", "/app/"] },
   { href: "/rising", label: "Aufsteiger", match: ["/rising"] },
+  { href: "/publishers", label: "Publisher", match: ["/publishers"] },
   { href: "/charts", label: "Rankings", match: ["/charts"] },
 ];
 

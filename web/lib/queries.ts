@@ -10,6 +10,7 @@ export type ExploreFilters = {
   charted: boolean;
   all: boolean; // include apps not refreshed yet (only an ID and slug)
   minRevenue: number; // estimated gross USD per month (model median)
+  developer: string; // developer_id, exact
   sort: "ratings" | "rank" | "revenue" | "downloads" | "newest" | "updated" | "name";
   page: number;
 };
@@ -33,6 +34,7 @@ export function parseFilters(params: Params): ExploreFilters {
     charted: one(params.charted) === "1",
     all: one(params.all) === "1",
     minRevenue: Math.max(0, Number.parseInt(one(params.minRevenue), 10) || 0),
+    developer: one(params.developer).slice(0, 200),
     sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "newest", "updated", "name"] as const, "ratings"),
     page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
   };
@@ -95,6 +97,7 @@ function where(f: ExploreFilters) {
     ${f.price === "free" ? sql`AND a.price = 0` : f.price === "paid" ? sql`AND a.price > 0` : sql``}
     ${f.charted ? sql`AND b.app_id IS NOT NULL` : sql``}
     ${f.minRevenue ? sql`AND e.revenue_p50 >= ${f.minRevenue}` : sql``}
+    ${f.developer ? sql`AND a.developer_id = ${f.developer}` : sql``}
     ${f.sort === "revenue" ? sql`AND e.revenue_p50 IS NOT NULL` : f.sort === "downloads" ? sql`AND e.app_id IS NOT NULL` : sql``}`;
 }
 
@@ -207,7 +210,24 @@ export async function appDetail(platform: string, storeId: string) {
   const iaps = await sql<{ position: number; name: string; price: string; currency: string }[]>`
     SELECT position, name, price, currency FROM iap_products
     WHERE app_id = ${app.id} AND country = ${monetization?.country ?? "us"} ORDER BY position`;
-  return { app, ranks, metrics, siblings, estimate, monetization, iaps };
+  const [kpis] = await sql<{
+    days_top100: number; first_chart_day: Date | null; countries_today: number; peak_revenue_day: number | null;
+    peak_day: Date | null; versions_seen: number; observed_days: number;
+  }[]>`
+    SELECT
+      (SELECT COUNT(DISTINCT captured_on)::int FROM chart_ranks
+        WHERE app_id = ${app.id} AND genre_id = '36' AND rank <= 100) AS days_top100,
+      (SELECT MIN(captured_on) FROM chart_ranks WHERE app_id = ${app.id}) AS first_chart_day,
+      (SELECT COUNT(DISTINCT country)::int FROM chart_ranks
+        WHERE app_id = ${app.id} AND captured_on = (SELECT MAX(captured_on) FROM chart_ranks WHERE app_id = ${app.id})
+       ) AS countries_today,
+      p.peak_revenue_day, p.peak_day,
+      (SELECT COUNT(DISTINCT version)::int FROM app_metrics_daily WHERE app_id = ${app.id} AND version IS NOT NULL) AS versions_seen,
+      (SELECT COUNT(DISTINCT day)::int FROM app_metrics_daily WHERE app_id = ${app.id}) AS observed_days
+    FROM (SELECT MAX(revenue_p50) / 30 AS peak_revenue_day,
+                 (ARRAY_AGG(day ORDER BY revenue_p50 DESC NULLS LAST))[1] AS peak_day
+          FROM app_estimates_daily WHERE app_id = ${app.id} AND revenue_p50 IS NOT NULL) p`;
+  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis };
 }
 
 export async function chartFacets() {
@@ -344,4 +364,50 @@ export async function chartMovers(f: RisingFilters, days: number) {
     ORDER BY COALESCE(p.rank, 201) - c.rank DESC, c.rank
     LIMIT ${PAGE_SIZE}`;
   return { rows, ...range };
+}
+
+export type PublisherRow = {
+  developer_id: string;
+  developer_name: string | null;
+  platform: string;
+  apps: number;
+  apps_with_revenue: number;
+  revenue: number | null;
+  downloads: number | null;
+  top_apps: { store_id: string; name: string | null; icon_url: string | null; revenue: number | null }[];
+};
+
+/** Publishers ranked by the sum of their apps' estimated revenue (model medians, latest estimate day). */
+export async function publisherRanking(platform: "ios" | "android", category: string, page: number) {
+  const filter = sql`
+    WHERE a.platform = ${platform} AND a.developer_id IS NOT NULL
+    ${category ? sql`AND a.category = ${category}` : sql``}`;
+  const rows = await sql<PublisherRow[]>`
+    WITH e AS (${latestEstimates})
+    SELECT a.developer_id, MAX(a.developer_name) AS developer_name, a.platform,
+           COUNT(*)::int AS apps, COUNT(e.revenue_p50)::int AS apps_with_revenue,
+           SUM(e.revenue_p50)::float8 AS revenue, SUM(e.downloads_p50)::float8 AS downloads,
+           (ARRAY_AGG(json_build_object('store_id', a.store_id, 'name', a.name, 'icon_url', a.icon_url,
+                                        'revenue', e.revenue_p50)
+                      ORDER BY e.revenue_p50 DESC NULLS LAST))[1:4] AS top_apps
+    FROM e JOIN apps a ON a.id = e.app_id
+    ${filter}
+    GROUP BY a.developer_id, a.platform
+    HAVING SUM(e.revenue_p50) > 0
+    ORDER BY revenue DESC NULLS LAST, a.developer_id
+    LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`;
+  const [{ total }] = await sql<{ total: number }[]>`
+    WITH e AS (${latestEstimates})
+    SELECT COUNT(*)::int AS total FROM (
+      SELECT 1 FROM e JOIN apps a ON a.id = e.app_id ${filter}
+      GROUP BY a.developer_id HAVING SUM(e.revenue_p50) > 0) t`;
+  return { rows, total };
+}
+
+export async function publisherCategories(platform: string) {
+  return sql<{ category: string; apps: number }[]>`
+    WITH e AS (${latestEstimates})
+    SELECT a.category, COUNT(*)::int AS apps FROM e JOIN apps a ON a.id = e.app_id
+    WHERE a.platform = ${platform} AND a.category IS NOT NULL AND e.revenue_p50 > 0
+    GROUP BY a.category ORDER BY apps DESC LIMIT 80`;
 }
