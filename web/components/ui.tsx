@@ -1,3 +1,4 @@
+import { Apple, Play } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** Store icons in a size that fits the list instead of the 512px originals. */
@@ -25,8 +26,11 @@ export function AppIcon({ url, size = 40, name }: { url: string | null; size?: n
 }
 
 export function PlatformBadge({ platform }: { platform: string }) {
+  const Icon = platform === "ios" ? Apple : Play;
   return (
-    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted">
+    <span title={platform === "ios" ? "App Store" : "Google Play"}
+      className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted">
+      <Icon className="size-3" aria-hidden />
       {platform === "ios" ? "iOS" : "Android"}
     </span>
   );

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Form from "next/form";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { AutoSubmitCheckbox, AutoSubmitSelect } from "@/components/auto-submit";
+import { ExploreFilters as ExploreFiltersBar } from "@/components/explore-filters";
 import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton, Sparkline } from "@/components/ui";
 import { LANGUAGES } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPercent, formatPrice, formatUsd } from "@/lib/format";
+import { filtersToQuery } from "@/lib/explore-params";
 import { categories, COUNT_CAP, exploreApps, overview, PAGE_SIZE, parseFilters, trendSeries, type ExploreFilters } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "App-Explorer" };
@@ -40,13 +40,13 @@ async function Overview() {
 
 async function Explorer({ searchParams }: { searchParams: PageProps<"/explore">["searchParams"] }) {
   const filters = parseFilters(await searchParams);
-  const [{ rows, total, capped }, categoryList] = await Promise.all([exploreApps(filters), categories()]);
+  const [{ rows, total, capped }, categoryList] = await Promise.all([exploreApps(filters), categories(filters.platform)]);
   const series = await trendSeries(rows.flatMap((r) =>
     r.growth_metric && r.growth_country && r.growth_start_day
       ? [{ id: r.id, country: r.growth_country, metric: r.growth_metric, start_day: r.growth_start_day }] : []));
   return (
     <>
-      <Filters filters={filters} categoryList={categoryList} />
+      <ExploreFiltersBar filters={filters} categories={categoryList} languages={LANGUAGES} />
       <Card
         title={capped ? `Über ${formatNumber(COUNT_CAP)} Apps` : `${formatNumber(total)} Apps`}
         aside={<span className="text-xs text-muted">Seite {filters.page}{capped ? "" : ` von ${Math.max(1, Math.ceil(total / PAGE_SIZE))}`}</span>}
@@ -59,76 +59,6 @@ async function Explorer({ searchParams }: { searchParams: PageProps<"/explore">[
         <Pagination filters={filters} total={total} capped={capped} />
       </Card>
     </>
-  );
-}
-
-function Filters({ filters, categoryList }: { filters: ExploreFilters; categoryList: { category: string; apps: number }[] }) {
-  return (
-    <Form action="/explore" className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-3">
-      {filters.developer ? (
-        <div className="flex w-full items-center gap-2 text-sm">
-          <input type="hidden" name="developer" value={filters.developer} />
-          <span className="rounded-md bg-primary-soft px-2 py-1 text-primary">Nur Apps eines Publishers ({filters.developer})</span>
-          <Link href={`/explore?platform=${filters.platform}`} className="text-xs text-muted hover:text-text">Filter entfernen</Link>
-        </div>
-      ) : null}
-      <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted">
-        Suche
-        <input name="q" defaultValue={filters.q} placeholder="Name, Slug oder Store-ID" className="field" />
-      </label>
-      <Select label="Plattform" name="platform" value={filters.platform}
-        options={[["", "Alle"], ["ios", "iOS"], ["android", "Android"]]} />
-      <Select label="Kategorie" name="category" value={filters.category}
-        options={[["", "Alle"], ...categoryList.map((c) => [c.category, `${c.category} (${formatCompact(c.apps)})`] as [string, string])]} />
-      <Select label="Veröffentlicht" name="released" value={filters.released}
-        options={[["", "Jederzeit"], ["30", "Letzte 30 Tage"], ["90", "Letzte 90 Tage"], ["365", "Letzte 12 Monate"]]} />
-      <Select label="Bewertungen ab" name="minRatings" value={String(filters.minRatings || "")}
-        options={[["", "Egal"], ["100", "100"], ["1000", "1.000"], ["10000", "10.000"], ["100000", "100.000"]]} />
-      <Select label="Preis" name="price" value={filters.price}
-        options={[["", "Alle"], ["free", "Kostenlos"], ["paid", "Kostenpflichtig"]]} />
-      <Select label="Kategorie ausschließen" name="excludeCategory" value={filters.excludeCategory}
-        options={[["", "Keine"], ...categoryList.map((c) => [c.category, c.category] as [string, string])]} />
-      <Select label="Sprache (iOS)" name="language" value={filters.language}
-        options={[["", "Egal"], ...Object.entries(LANGUAGES)]} />
-      <Select label="Ø Bewertung ab" name="minRating" value={String(filters.minRating || "")}
-        options={[["", "Egal"], ["3", "3,0 Sterne"], ["4", "4,0 Sterne"], ["4.5", "4,5 Sterne"]]} />
-      <Select label="In-App-Käufe" name="iap" value={filters.iap}
-        options={[["", "Egal"], ["yes", "Ja (Abo oder IAP)"], ["no", "Nein"]]} />
-      <Select label="Umsatz/Monat ab" name="minRevenue" value={String(filters.minRevenue || "")}
-        options={[["", "Egal"], ["1000", "1.000 $"], ["10000", "10.000 $"], ["100000", "100.000 $"], ["1000000", "1 Mio. $"]]} />
-      <Select label="Sortierung" name="sort" value={filters.sort}
-        options={[["ratings", "Meiste Bewertungen"], ["revenue", "Höchster Umsatz (geschätzt)"], ["downloads", "Meiste Downloads (geschätzt)"], ["growth", "Stärkstes Wachstum (30 Tage)"], ["rank", "Bester Chart-Platz"], ["newest", "Neueste"], ["updated", "Zuletzt aktualisiert"], ["name", "Name"]]} />
-      <div className="flex h-9 items-center gap-4 px-1 text-sm">
-        <label className="flex items-center gap-2">
-          <AutoSubmitCheckbox name="charted" value="1" defaultChecked={filters.charted} className="accent-primary" />
-          Nur in Charts
-        </label>
-        <label className="flex items-center gap-2" title="Apple Search Ads in der EU in den letzten 90 Tagen (Apple Ad Repository)">
-          <AutoSubmitCheckbox name="appleAds" value="1" defaultChecked={filters.appleAds} className="accent-primary" />
-          Wirbt bei Apple (EU)
-        </label>
-        <label className="flex items-center gap-2" title="Auch Apps, für die bisher nur ID und Slug aus der Sitemap bekannt sind">
-          <AutoSubmitCheckbox name="all" value="1" defaultChecked={filters.all} className="accent-primary" />
-          Inkl. ohne Metadaten
-        </label>
-      </div>
-      <button type="submit" className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-white hover:bg-primary-strong">
-        Anwenden
-      </button>
-    </Form>
-  );
-}
-
-function Select({ label, name, value, options }: { label: string; name: string; value: string; options: [string, string][] }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs text-muted">
-      {label}
-      <AutoSubmitSelect name={name} defaultValue={value} className="field max-w-56">
-        {options.map(([optionValue, text]) => (
-          <option key={optionValue} value={optionValue}>{text}</option>
-        ))}
-      </AutoSubmitSelect>
-    </label>
   );
 }
 
@@ -220,13 +150,8 @@ function Pagination({ filters, total, capped }: { filters: ExploreFilters; total
   const pages = capped ? Number.POSITIVE_INFINITY : Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (pages <= 1) return null;
   const href = (page: number) => {
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(filters)) {
-      if (key === "page" || value === "" || value === false || value === 0) continue;
-      params.set(key, value === true ? "1" : String(value));
-    }
-    if (page > 1) params.set("page", String(page));
-    return `/explore?${params}`;
+    const query = filtersToQuery({ ...filters, page });
+    return query ? `/explore?${query}` : "/explore";
   };
   return (
     <nav className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">

@@ -1,56 +1,15 @@
 import { cacheLife } from "next/cache";
 
 import { sql } from "./db";
+import type { ExploreFilters } from "./explore-params";
 
-export type ExploreFilters = {
-  q: string;
-  platform: "" | "ios" | "android";
-  category: string;
-  released: "" | "30" | "90" | "365";
-  minRatings: number;
-  price: "" | "free" | "paid";
-  charted: boolean;
-  all: boolean; // include apps not refreshed yet (only an ID and slug)
-  minRevenue: number; // estimated gross USD per month (model median)
-  developer: string; // developer_id, exact
-  excludeCategory: string;
-  language: string; // ISO code an iOS app lists, e.g. "DE"
-  minRating: number; // average rating, 0 = any
-  iap: "" | "yes" | "no";
-  appleAds: boolean; // advertised with Apple Search Ads in the EU in the last 90 days
-  sort: "ratings" | "rank" | "revenue" | "downloads" | "growth" | "newest" | "updated" | "name";
-  page: number;
-};
+export { parseFilters, type ExploreFilters } from "./explore-params";
 
 export const PAGE_SIZE = 50;
 
 type Params = Record<string, string | string[] | undefined>;
 
 const one = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? "";
-
-export function parseFilters(params: Params): ExploreFilters {
-  const pick = <T extends string>(value: string, allowed: readonly T[], fallback: T): T =>
-    (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
-  return {
-    q: one(params.q).trim().slice(0, 100),
-    platform: pick(one(params.platform), ["", "ios", "android"] as const, ""),
-    category: one(params.category).slice(0, 100),
-    released: pick(one(params.released), ["", "30", "90", "365"] as const, ""),
-    minRatings: Math.max(0, Number.parseInt(one(params.minRatings), 10) || 0),
-    price: pick(one(params.price), ["", "free", "paid"] as const, ""),
-    charted: one(params.charted) === "1",
-    all: one(params.all) === "1",
-    minRevenue: Math.max(0, Number.parseInt(one(params.minRevenue), 10) || 0),
-    developer: one(params.developer).slice(0, 200),
-    excludeCategory: one(params.excludeCategory).slice(0, 100),
-    language: one(params.language).slice(0, 3).toUpperCase().replace(/[^A-Z]/g, ""),
-    minRating: [3, 4, 4.5].includes(Number(one(params.minRating))) ? Number(one(params.minRating)) : 0,
-    iap: pick(one(params.iap), ["", "yes", "no"] as const, ""),
-    appleAds: one(params.appleAds) === "1",
-    sort: pick(one(params.sort), ["ratings", "rank", "revenue", "downloads", "growth", "newest", "updated", "name"] as const, "ratings"),
-    page: Math.max(1, Number.parseInt(one(params.page), 10) || 1),
-  };
-}
 
 export type AppRow = {
   id: number;
@@ -192,13 +151,14 @@ export async function overview() {
   return counts;
 }
 
-export async function categories() {
+/** Categories with app counts; App Store and Google Play name their categories differently, so per platform. */
+export async function categories(platform: "" | "ios" | "android" = "") {
   "use cache";
   cacheLife("hours");
   return sql<{ category: string; apps: number }[]>`
     SELECT category, COUNT(*)::int AS apps FROM apps
-    WHERE status = 'active' AND category IS NOT NULL
-    GROUP BY category ORDER BY apps DESC LIMIT 80`;
+    WHERE status = 'active' AND category IS NOT NULL ${platform ? sql`AND platform = ${platform}` : sql``}
+    GROUP BY category ORDER BY apps DESC LIMIT 120`;
 }
 
 export type AppDetail = AppRow & {
