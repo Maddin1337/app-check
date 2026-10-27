@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
   { href: "/rising", label: "Aufsteiger", match: ["/rising"] },
   { href: "/publishers", label: "Publisher", match: ["/publishers"] },
   { href: "/charts", label: "Rankings", match: ["/charts"] },
+  { href: "/methodik", label: "Methodik", match: ["/methodik"] },
 ];
 
 const base = "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium";

@@ -522,3 +522,47 @@ export async function appEvents(appId: number) {
     SELECT day, previous_day, kind, country, chart, old_value, new_value, magnitude FROM app_events
     WHERE app_id = ${appId} ORDER BY day DESC, magnitude DESC LIMIT 30`;
 }
+
+export type AnchorRow = {
+  app: string;
+  platform: string;
+  store_id: string;
+  period_start: Date;
+  period_end: Date;
+  reported_month_usd: number;
+  us_low: number;
+  us_high: number;
+  truth_low: number;
+  truth_high: number;
+  source_url: string;
+  note: string | null;
+  grossing_rank: number | null;
+  estimate: number | null;
+};
+
+/** Calibration state and every ground-truth anchor next to our current estimate, for the methodology page. */
+export async function methodology() {
+  const calibration = await sql<{ key: string; value: number; prior: number; anchors: number; spread: number | null; computed_at: Date }[]>`
+    SELECT key, value, prior, anchors, spread, computed_at FROM model_calibration`;
+  const anchors = await sql<AnchorRow[]>`
+    WITH e AS (${latestEstimates})
+    SELECT g.app, g.platform, g.store_id, g.period_start, g.period_end, g.reported_month_usd::float8 AS reported_month_usd,
+           g.us_low, g.us_high,
+           (g.reported_month_usd * g.us_low * g.ios_low * g.store_low)::float8 AS truth_low,
+           (g.reported_month_usd * g.us_high * g.ios_high * g.store_high)::float8 AS truth_high,
+           g.source_url, g.note,
+           (SELECT MIN(c.rank)::int FROM chart_ranks c
+             WHERE c.app_id = a.id AND c.country = 'us' AND c.device = 'iphone' AND c.chart = 'top-grossing'
+               AND c.genre_id = '36' AND c.captured_on = (SELECT MAX(captured_on) FROM chart_ranks WHERE chart = 'top-grossing'))
+             AS grossing_rank,
+           e.revenue_p50 AS estimate
+    FROM ground_truth g
+    LEFT JOIN apps a ON a.platform = g.platform AND a.store_id = g.store_id
+    LEFT JOIN e ON e.app_id = a.id
+    ORDER BY grossing_rank NULLS LAST, g.app`;
+  const [counts] = await sql<{ estimates: number; with_revenue: number; day: Date | null }[]>`
+    WITH e AS (${latestEstimates})
+    SELECT COUNT(*)::int AS estimates, COUNT(revenue_p50)::int AS with_revenue,
+           (SELECT MAX(day) FROM app_estimates_daily) AS day FROM e`;
+  return { calibration: Object.fromEntries(calibration.map((c) => [c.key, c])), anchors, counts };
+}

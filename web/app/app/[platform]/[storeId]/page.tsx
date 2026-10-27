@@ -127,7 +127,8 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
                 {estimate.revenue_method && REVENUE_METHOD_TEXT[estimate.revenue_method]
                   ? REVENUE_METHOD_TEXT[estimate.revenue_method]
                   : estimate.monetization ? MONETIZATION_TEXT[estimate.monetization] : ""}{" "}
-                Spanne = P10 bis P90. Werbeeinnahmen sind nicht enthalten. Methodik: docs/research/04-schaetzmodelle.md.
+                Spanne = P10 bis P90. Werbeeinnahmen sind nicht enthalten.{" "}
+                <Link href="/methodik" className="text-primary hover:underline">Zur Methodik</Link>
               </p>
             </div>
           )}
