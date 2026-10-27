@@ -29,7 +29,7 @@ class DatabaseFlow(unittest.TestCase):
         self.connection.execute("DROP SCHEMA public CASCADE")
         self.connection.execute("CREATE SCHEMA public")
         self.connection.commit()
-        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events", "0007_chart_summary"])
+        self.assertEqual(db.migrate(self.connection), ["0001_init", "0002_trends", "0003_estimates", "0004_revenue_method", "0005_calibration", "0006_events", "0007_chart_summary", "0008_store_page"])
         self.connection.close()
         self.connection = db.connect(DSN)  # the schema must survive a new connection
         self.assertEqual(db.migrate(self.connection), [])

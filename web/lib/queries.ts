@@ -267,7 +267,10 @@ export async function appDetail(platform: string, storeId: string) {
     FROM (SELECT MAX(revenue_p50) / 30 AS peak_revenue_day,
                  (ARRAY_AGG(day ORDER BY revenue_p50 DESC NULLS LAST))[1] AS peak_day
           FROM app_estimates_daily WHERE app_id = ${app.id} AND revenue_p50 IS NOT NULL) p`;
-  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis };
+  const [storePage] = await sql<{
+    fetched_at: Date; rating_counts: string[] | null; screenshots: { template: string; width: number | null; height: number | null }[] | null;
+  }[]>`SELECT fetched_at, rating_counts, screenshots FROM app_store_page WHERE app_id = ${app.id}`;
+  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage };
 }
 
 export async function chartFacets() {

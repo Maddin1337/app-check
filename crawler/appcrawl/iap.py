@@ -88,6 +88,37 @@ def _annualize(prices: set[float]) -> float:
     return statistics.median(yearly) if yearly else min(prices) * 12
 
 
+def parse_page_extras(body: bytes) -> dict | None:
+    """Star histogram (5 → 1) and iPhone screenshot templates from the same page data, None when unparseable."""
+    match = SERVER_DATA.search(body)
+    if not match:
+        return None
+    try:
+        shelves = json.loads(match.group(1))["data"][0]["data"]["shelfMapping"]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    counts = None
+    for item in (shelves.get("productRatings") or {}).get("items") or []:
+        if isinstance(item.get("ratingCounts"), list) and len(item["ratingCounts"]) == 5:
+            counts = [int(c) for c in item["ratingCounts"]]
+    screenshots = [
+        {"template": shot["template"], "width": shot.get("width"), "height": shot.get("height")}
+        for item in (shelves.get("product_media_phone_") or {}).get("items") or []
+        if (shot := item.get("screenshot") or {}).get("template")
+    ]
+    return {"rating_counts": counts, "screenshots": screenshots[:10]}
+
+
+def store_page_extras(connection: psycopg.Connection, app_id: int, country: str, extras: dict) -> None:
+    connection.execute(
+        """INSERT INTO app_store_page (app_id, country, fetched_at, rating_counts, screenshots)
+           VALUES (%s, %s, now(), %s, %s)
+           ON CONFLICT (app_id) DO UPDATE SET country = excluded.country, fetched_at = excluded.fetched_at,
+             rating_counts = excluded.rating_counts, screenshots = excluded.screenshots""",
+        (app_id, country, extras["rating_counts"], json.dumps(extras["screenshots"])),
+    )
+
+
 def classify(app_price: Decimal | float | None, items: list[tuple[str, Decimal, str]]) -> dict:
     """Monetization model and price levels from the app price and its IAP list."""
     prices = [float(p) for _, p, _ in items]
@@ -234,14 +265,16 @@ def refresh_iap(connection: psycopg.Connection, country: str, rate: float, worke
 
     def load(app):
         status, body = fetch(APP_PAGE.format(country=country, store_id=app[1]), limiter)
-        return status, parse_app_page(body) if status == 200 else None
+        if status != 200:
+            return status, None, None
+        return status, parse_app_page(body), parse_page_extras(body)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(load, app): app for app in apps}
         for future in as_completed(futures):
             app_id, store_id, price = futures.pop(future)  # drop the finished future: it holds the whole response
             try:
-                status, items = future.result()
+                status, items, extras = future.result()
             except FetchError as failure:
                 print(f"iap {store_id}: {failure}", file=sys.stderr)
                 failed += 1
@@ -249,6 +282,8 @@ def refresh_iap(connection: psycopg.Connection, country: str, rate: float, worke
             if items is None:  # 404 or a page layout we cannot read: retry next week, do not store a guess
                 failed += 1
                 continue
+            if extras:
+                store_page_extras(connection, app_id, country, extras)  # committed together with the IAP list
             model = store_iap(connection, app_id, country, price, items)["model"]
             models[model] = models.get(model, 0) + 1
             done += 1

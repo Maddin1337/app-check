@@ -17,7 +17,7 @@ Speicher ist **PostgreSQL**. Hintergrund und Quellen:
 | `refresh-android` | Play-Detailseite (laut robots.txt erlaubt) | Metadaten + **exakte Installationszahl** täglich |
 | `plan-tiers` | eigene Daten | Wie oft jede App aktualisiert wird (T0 täglich … T3 selten) |
 | `trends` | eigene Messwerte | Wachstum über 7 und 30 Tage: iOS Bewertungen pro Store, Android exakte Installationen |
-| `refresh-iap` | App-Store-Seiten (laut robots.txt erlaubt) | Liste der In-App-Käufe mit Preis und Monetarisierung pro App (Abo, IAP, Kauf-App, gratis); Android aus der Preisspanne der Detailseite |
+| `refresh-iap` | App-Store-Seiten (laut robots.txt erlaubt) | Liste der In-App-Käufe mit Preis und Monetarisierung pro App (Abo, IAP, Kauf-App, gratis), dazu Sterne-Verteilung und Screenshots aus derselben Seite; Android aus der Preisspanne der Detailseite |
 | `events` | eigene Daten | Ereignisse pro App gegenüber der vorigen Messung: Sprünge ≥ 20 Plätze und Top-100-Einstiege in den Gesamtcharts, Bewertungs- und Installations-Sprünge, Preis- und Versionswechsel |
 | `estimates` | eigene Daten | **Schätzmodell v0:** Downloads pro Tag und Umsatz pro Monat (brutto/netto) als Spanne P10–P90 mit Konfidenz |
 
@@ -38,6 +38,7 @@ Schema: [`appcrawl/migrations/0001_init.sql`](appcrawl/migrations/0001_init.sql)
 | `iap_products`, `app_monetization` | gelistete In-App-Käufe und abgeleitetes Monetarisierungsmodell (`0003_estimates.sql`) |
 | `app_estimates_daily` | Schätzungen pro App und Tag (monatlich partitioniert) |
 | `app_events` | Ereignisse pro App und Tag (`0006_events.sql`) |
+| `app_store_page` | Sterne-Verteilung und iPhone-Screenshots von der App-Store-Seite (`0008_store_page.sql`) |
 | `app_chart_summary` | bester Chart-Platz pro App am letzten Chart-Tag, nach jedem Chart-Lauf neu (`0007_chart_summary.sql`) |
 | `sitemap_files` | Fortschritt der Discovery |
 

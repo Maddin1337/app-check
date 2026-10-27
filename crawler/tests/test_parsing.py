@@ -6,7 +6,7 @@ from appcrawl.charts import CHART_URL, parse_chart_page, parse_grossing_rss
 from appcrawl.discover import parse_apple_urlset, parse_locs, parse_play_urlset, sitemap_indexes
 from appcrawl.calibrate import anchor_range, fit_scale
 from appcrawl.estimates import curve, net_factor, rpd
-from appcrawl.iap import classify, parse_app_page, parse_price
+from appcrawl.iap import classify, parse_app_page, parse_page_extras, parse_price
 from appcrawl.refresh_android import _domain, _released
 from appcrawl.refresh_ios import app_fields
 
@@ -153,6 +153,18 @@ class IapParsing(unittest.TestCase):
         ])
         self.assertEqual(parse_app_page(page), [("Super Duolingo", Decimal("9.99"), "USD"),
                                                 ("Super Duolingo", Decimal("83.99"), "USD")])
+
+    def test_page_extras(self):
+        data = {"data": [{"data": {"shelfMapping": {
+            "productRatings": {"items": [{"ratingCounts": [50, 20, 5, 2, 3]}]},
+            "product_media_phone_": {"items": [
+                {"screenshot": {"template": "https://x/a.jpg/{w}x{h}{c}.{f}", "width": 1242, "height": 2688}},
+                {"other": True}]}}}}]}
+        page = b'<script type="application/json" id="serialized-server-data">' + json.dumps(data).encode() + b"</script>"
+        extras = parse_page_extras(page)
+        self.assertEqual(extras["rating_counts"], [50, 20, 5, 2, 3])
+        self.assertEqual(extras["screenshots"], [{"template": "https://x/a.jpg/{w}x{h}{c}.{f}", "width": 1242, "height": 2688}])
+        self.assertIsNone(parse_page_extras(b"<html></html>"))
 
     def test_no_iaps_and_unreadable_pages(self):
         self.assertEqual(parse_app_page(app_page([{"title": "Seller", "items": []}])), [])

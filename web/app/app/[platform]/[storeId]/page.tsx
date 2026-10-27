@@ -24,7 +24,7 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
   if (platform !== "ios" && platform !== "android") notFound();
   const detail = await appDetail(platform, decodeURIComponent(storeId));
   if (!detail) notFound();
-  const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis } = detail;
+  const { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage } = detail;
   const events = await appEvents(app.id);
   const name = displayName(app.name, app.slug, app.store_id);
 
@@ -98,6 +98,24 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
           hint={`an ${formatNumber(kpis.observed_days)} Messtag(en)`} />
       </div>
 
+      {storePage?.screenshots?.length ? (
+        <Card title="Screenshots" aside={<span className="text-xs text-muted">App Store, {formatDate(storePage.fetched_at)}</span>}>
+          <div className="flex gap-3 overflow-x-auto p-4">
+            {storePage.screenshots.map((shot, i) => {
+              const width = 180;
+              const height = shot.width && shot.height ? Math.round((width * shot.height) / shot.width) : 390;
+              const src = shot.template.replace("{w}", String(width * 2)).replace("{h}", String(height * 2))
+                .replace("{c}", "bb").replace("{f}", "jpg");
+              return (
+                // eslint-disable-next-line @next/next/no-img-element -- Apple's CDN serves the requested size
+                <img key={i} src={src} alt={`Screenshot ${i + 1}`} width={width} height={height} loading="lazy"
+                  className="shrink-0 rounded-xl border border-border bg-surface-2" />
+              );
+            })}
+          </div>
+        </Card>
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-2">
         <Card
           title="Downloads und Umsatz (Schätzung)"
@@ -162,6 +180,8 @@ async function AppDetail({ params }: { params: PageProps<"/app/[platform]/[store
             </div>
           )}
         </Card>
+
+        {storePage?.rating_counts ? <RatingHistogram counts={storePage.rating_counts.map(Number)} /> : null}
 
         <Card title="Ereignisse" aside={<span className="text-xs text-muted">letzte 30</span>}>
           {events.length === 0 ? (
@@ -273,6 +293,28 @@ const MODEL_LABEL: Record<string, string> = {
   paid: "Kauf-App",
   free: "Kostenlos ohne In-App-Käufe",
 };
+
+function RatingHistogram({ counts }: { counts: number[] }) {
+  const total = counts.reduce((a, b) => a + b, 0);
+  const max = Math.max(...counts, 1);
+  return (
+    <Card title="Verteilung der Bewertungen" aside={<span className="text-xs text-muted">{formatNumber(total)} Bewertungen, US-Store</span>}>
+      <div className="space-y-2 px-4 py-4">
+        {counts.map((count, i) => (
+          <div key={i} className="flex items-center gap-3 text-sm">
+            <span className="w-16 shrink-0 text-muted">{5 - i} Sterne</span>
+            <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+              <span className="block h-full rounded-full bg-primary" style={{ width: `${(count / max) * 100}%` }} />
+            </span>
+            <span className="w-14 shrink-0 text-right tabular-nums text-muted">
+              {total ? `${Math.round((count / total) * 100)} %` : "–"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function EstimateStat({ label, value, range, confidence }: {
   label: string; value: string; range: string; confidence: "low" | "medium" | "high" | null;

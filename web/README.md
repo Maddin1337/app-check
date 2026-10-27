@@ -6,7 +6,7 @@ Arbeitstitel „app-check“, eigenes Design (Iris-Violett, Geist), bewusst ande
 | Seite | Inhalt |
 |---|---|
 | `/explore` | Suche und Filter über den ganzen Katalog: Plattform, Kategorie (ein- und ausschließen), Sprache, Veröffentlichung, Bewertungen und Ø-Bewertung, Preis, In-App-Käufe, geschätzter Umsatz, Publisher, „nur in Charts“; Sortierung nach Bewertungen, geschätztem Umsatz bzw. Downloads, Wachstum (30 Tage, mit Verlaufskurve), bestem Chart-Platz, Neuheit. Die Trefferzahl wird ab 10.000 nicht mehr exakt gezählt. Filter stehen in der URL und sind teilbar |
-| `/app/[platform]/[storeId]` | App-Detail: Kennzahlen (inkl. Tage in den Top 100, Länder mit Chartplatz, Spitzenumsatz pro Tag, beobachtete Versionen), geschätzte Downloads und Umsatz (Spanne, Methode, Konfidenz), In-App-Käufe mit Preisen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
+| `/app/[platform]/[storeId]` | App-Detail: Kennzahlen (inkl. Tage in den Top 100, Länder mit Chartplatz, Spitzenumsatz pro Tag, beobachtete Versionen), Screenshots, Verteilung der Bewertungen, geschätzte Downloads und Umsatz (Spanne, Methode, Konfidenz), In-App-Käufe mit Preisen, Chart-Platzierungen des letzten Tages, tägliche Messwerte, Verweis auf die andere Plattform |
 | `/charts` | Rankings pro Land, Chart, Kategorie und Gerät |
 | `/methodik` | Was gemessen und was geschätzt wird, Methoden mit Konfidenz, Eichstand und Vergleichswerte (berichtete Umsätze gegen unsere Schätzung, live aus der Datenbank), Grenzen, Zeitplan |
 | `/feed` | Ereignisse des letzten Tages (Aufstieg, Abstieg, neu in den Top 100, Bewertungs-/Installations-Sprung, Preis, Version), Filter Art und Land; auch als Karte auf der App-Seite |
