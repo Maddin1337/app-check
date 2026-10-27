@@ -10,7 +10,7 @@ from .calibrate import calibrate
 from .discover import discover
 from .estimates import compute_estimates
 from .events import compute_events
-from .iap import refresh_iap
+from .iap import reclassify_stored, refresh_iap
 from .import_csv import import_csv
 from .refresh_android import refresh_android
 from .refresh_ios import refresh_ios
@@ -129,6 +129,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--rate", type=float, default=0.5, help="pages per second (default 0.5)")
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--limit", type=int, default=8000, help="at most N pages (default 8000, ~4.5 h)")
+    p.add_argument("--reclassify", action="store_true", help="only re-run the monetization rules on stored IAP lists")
     sub.add_parser("stats", help="progress, tiers and time series coverage")
 
     p = sub.add_parser("export", help="gzip CSV of apps (per platform), charts or metrics")
@@ -165,6 +166,8 @@ def main(argv: list[str] | None = None) -> None:
             print(calibrate(connection), file=sys.stderr)
         elif args.command == "estimates":
             print(compute_estimates(connection), file=sys.stderr)
+        elif args.command == "refresh-iap" and args.reclassify:
+            print(f"reclassified {reclassify_stored(connection):,} apps", file=sys.stderr)
         elif args.command == "refresh-iap":
             refresh_iap(connection, args.country, args.rate, args.workers, args.limit)
         elif args.command == "stats":

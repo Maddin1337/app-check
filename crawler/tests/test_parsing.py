@@ -169,8 +169,11 @@ class IapParsing(unittest.TestCase):
             return [(name, Decimal(price), "USD") for name, price in rows]
         calm = classify(0, items(("Calm Premium", "79.99"), ("Calm Premium", "14.99"), ("Calm Premium", "69.99")))
         self.assertEqual((calm["model"], calm["sub_annual_price"]), ("subscription", 74.99))
-        weekly = classify(0, items(("Pro Weekly", "4.99"), ("Pro Yearly", "39.99")))
-        self.assertEqual(weekly["sub_annual_price"], round((4.99 * 52 + 39.99) / 2, 2))
+        weekly = classify(0, items(("Pro Weekly", "4.99"), ("Pro Monthly", "9.99")))
+        self.assertEqual(weekly["sub_annual_price"], round((4.99 * 52 + 9.99 * 12) / 2, 2))
+        # An explicit yearly plan wins over monthly × 12.
+        espn = classify(0, items(("ESPN+ Monthly", "13.99"), ("ESPN+ Monthly", "13.99"), ("ESPN+ Yearly", "139.99")))
+        self.assertEqual(espn["sub_annual_price"], 139.99)
         game = classify(0, items(("Special Offer", "4.99"), ("Special Offer", "9.99"), ("Pouch of Gems", "0.99")))
         self.assertEqual((game["model"], game["iap_typical"]), ("iap", 4.99))
         self.assertEqual(classify(Decimal("5.99"), [])["model"], "paid")

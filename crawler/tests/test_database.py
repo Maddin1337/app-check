@@ -15,7 +15,7 @@ from appcrawl.trends import compute_trends
 from appcrawl.calibrate import calibrate
 from appcrawl.estimates import compute_estimates
 from appcrawl.events import compute_events
-from appcrawl.iap import store_iap
+from appcrawl.iap import reclassify_stored, store_iap
 
 from test_parsing import CHART_PAGE
 
@@ -219,6 +219,11 @@ class DatabaseFlow(unittest.TestCase):
         store_iap(self.connection, ids["1"], "us", Decimal(0), [("Pro", Decimal("9.99"), "USD"),
                                                                  ("Pro", Decimal("59.99"), "USD")])
         store_iap(self.connection, ids["200"], "us", Decimal(0), [("Premium Yearly", Decimal("499.99"), "USD")])
+
+        # Re-running the rules on stored lists keeps the result for unchanged rules.
+        self.assertEqual(reclassify_stored(self.connection), 2)
+        self.assertEqual(self.scalar("SELECT sub_annual_price FROM app_monetization WHERE app_id = %s", ids["200"]),
+                         Decimal("499.99"))
 
         result = compute_estimates(self.connection)
         self.assertEqual(result["apps"], 29)

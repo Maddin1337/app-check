@@ -91,14 +91,19 @@ def _annualize(prices: set[float]) -> float:
 def classify(app_price: Decimal | float | None, items: list[tuple[str, Decimal, str]]) -> dict:
     """Monetization model and price levels from the app price and its IAP list."""
     prices = [float(p) for _, p, _ in items]
-    annual = []
+    annual, yearly = [], []
     by_name: dict[str, set[float]] = {}
     for name, price, _ in items:
         by_name.setdefault(name.lower(), set()).add(float(price))
         for pattern, per_year in PERIODS:
             if pattern.search(name):
                 annual.append(float(price) * per_year)
+                if per_year == 1:
+                    yearly.append(float(price))
                 break
+    # An explicit yearly plan is what the app charges per year; monthly × 12 overstates it (ESPN+: $139.99 vs 12 × $13.99).
+    if yearly:
+        annual = yearly
     # One product name at several prices is a subscription with several periods or tiers ("Super Duolingo",
     # "Calm Premium"), unless the name is a generic consumable ("Special Offer", "Pouch of Gems").
     groups = [ps for name, ps in by_name.items() if len(ps) > 1 and not CONSUMABLE_WORDS.search(name)]
@@ -173,6 +178,31 @@ def classify_android(connection: psycopg.Connection) -> int:
                  iap_min = excluded.iap_min, iap_max = excluded.iap_max, iap_typical = excluded.iap_typical,
                  currency = excluded.currency""",
             {"app_id": app_id, **result},
+        )
+    connection.commit()
+    return len(rows)
+
+
+def reclassify_stored(connection: psycopg.Connection) -> int:
+    """Re-runs classify() on the stored iOS IAP lists, e.g. after a rule change; fetch dates stay as they are."""
+    rows = connection.execute(
+        """SELECT m.app_id, m.country, a.price,
+                  COALESCE(array_agg(i.name ORDER BY i.position) FILTER (WHERE i.name IS NOT NULL), '{}'),
+                  COALESCE(array_agg(i.price ORDER BY i.position) FILTER (WHERE i.name IS NOT NULL), '{}'),
+                  COALESCE(array_agg(i.currency ORDER BY i.position) FILTER (WHERE i.name IS NOT NULL), '{}')
+           FROM app_monetization m JOIN apps a ON a.id = m.app_id
+           LEFT JOIN iap_products i ON i.app_id = m.app_id AND i.country = m.country
+           WHERE m.country <> 'ww'
+           GROUP BY m.app_id, m.country, a.price"""
+    ).fetchall()
+    with connection.cursor() as cursor:
+        cursor.executemany(
+            """UPDATE app_monetization SET model = %(model)s, iap_count = %(iap_count)s, iap_min = %(iap_min)s,
+                 iap_max = %(iap_max)s, iap_typical = %(iap_typical)s, sub_annual_price = %(sub_annual_price)s,
+                 currency = %(currency)s
+               WHERE app_id = %(app_id)s""",
+            [{"app_id": app_id, **classify(price, list(zip(names, prices, currencies)))}
+             for app_id, _, price, names, prices, currencies in rows],
         )
     connection.commit()
     return len(rows)
