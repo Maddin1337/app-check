@@ -239,11 +239,12 @@ def reclassify_stored(connection: psycopg.Connection) -> int:
     return len(rows)
 
 
-def due_apps(connection: psycopg.Connection, limit: int) -> list[tuple[int, str, Decimal | None]]:
+def due_apps(connection: psycopg.Connection, country: str, limit: int) -> list[tuple[int, str, Decimal | None]]:
+    # Only apps whose metadata comes from this storefront: an app missing from it answers 404 every day.
     return connection.execute(
         f"""SELECT a.id, a.store_id, a.price FROM apps a
             LEFT JOIN app_monetization m ON m.app_id = a.id
-            WHERE a.platform = 'ios' AND a.status = 'active'
+            WHERE a.platform = 'ios' AND a.status = 'active' AND a.refresh_country = %s
               AND (m.fetched_at IS NULL OR m.fetched_at < now() - interval '{REFETCH_DAYS} days')
               AND (a.rating_count >= {MIN_RATINGS}
                    OR EXISTS (SELECT 1 FROM chart_ranks c WHERE c.app_id = a.id AND c.captured_on >= current_date - 7))
@@ -251,13 +252,13 @@ def due_apps(connection: psycopg.Connection, limit: int) -> list[tuple[int, str,
                      EXISTS (SELECT 1 FROM chart_ranks c WHERE c.app_id = a.id AND c.captured_on >= current_date - 7) DESC,
                      a.rating_count DESC NULLS LAST
             LIMIT %s""",
-        (limit,),
+        (country, limit),
     ).fetchall()
 
 
 def refresh_iap(connection: psycopg.Connection, country: str, rate: float, workers: int, limit: int) -> None:
     android = classify_android(connection)
-    apps = due_apps(connection, limit)
+    apps = due_apps(connection, country, limit)
     print(f"iap: {len(apps):,} iOS pages due ({country}), {android:,} Android apps classified", file=sys.stderr)
     limiter = RateLimiter(rate)
     done = failed = 0
