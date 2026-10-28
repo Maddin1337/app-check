@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
 import { ParamMenu, ParamSegmented } from "@/components/url-controls";
-import { AppIcon, Card, PlatformBadge, Skeleton, Sparkline } from "@/components/ui";
+import { AppIcon, Card, PageHeader, PlatformBadge, Skeleton, Sparkline } from "@/components/ui";
 import { CHARTS, countryName, genreName } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate, formatNumber, formatPercent } from "@/lib/format";
 import {
@@ -25,14 +25,13 @@ const CHART_DAYS = 7;
 export default function RisingPage({ searchParams }: PageProps<"/rising">) {
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Aufsteiger</h1>
-        <p className="mt-1 text-sm text-muted">
+      <PageHeader eyebrow="Momentum" title="Was gerade" accent="abhebt.">
+        <p>
           Was gerade wächst, gemessen an unseren eigenen täglichen Zeitreihen: bei Android die exakte Zahl der
           Installationen, bei iOS die Zahl der Bewertungen in einem Store. Bewertungen sind ein Signal für Downloads,
           keine Download-Zahl. Dazu die größten Sprünge in den App-Store-Charts.
         </p>
-      </header>
+      </PageHeader>
       <Suspense fallback={<Card><Skeleton rows={12} /></Card>}>
         <Rising searchParams={searchParams} />
       </Suspense>
@@ -44,7 +43,7 @@ async function Rising({ searchParams }: { searchParams: PageProps<"/rising">["se
   const f = parseRisingFilters(await searchParams);
   return (
     <>
-      <nav className="flex gap-1 rounded-xl border border-border bg-surface p-1 text-sm">
+      <nav className="card flex gap-1 p-1 text-sm">
         <Tab active={f.view === "growth"} href="/rising">Wachstum</Tab>
         <Tab active={f.view === "charts"} href="/rising?view=charts">Chart-Aufsteiger</Tab>
       </nav>
@@ -79,7 +78,7 @@ async function Growth({ f }: { f: RisingFilters }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 card p-3">
         <ParamSegmented label="Plattform" name="platform" value={f.platform} fallback="ios" reset={["category"]}
           options={[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]} />
         <ParamSegmented label="Zeitraum" name="window" value={String(f.window)} fallback="30"
@@ -175,7 +174,7 @@ async function ChartMovers({ f }: { f: RisingFilters }) {
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 card p-3">
         <ParamSegmented label="Chart" name="chart" value={f.chart} fallback="top-free" options={Object.entries(CHARTS).map(([value, label]) => ({ value, label }))} />
         <ParamSegmented label="Gerät" name="device" value={f.device} fallback="iphone" options={[{ value: "iphone", label: "iPhone", icon: "iphone" }, { value: "ipad", label: "iPad", icon: "ipad" }, { value: "mac", label: "Mac", icon: "mac" }]} />
         <ParamMenu label="Land" name="country" value={country} fallback="de" icon="globe" searchable

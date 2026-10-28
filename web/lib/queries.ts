@@ -245,7 +245,16 @@ export async function appDetail(platform: string, storeId: string) {
     FROM apple_ads_fetch f LEFT JOIN apple_ads d ON d.app_id = f.app_id
     WHERE f.app_id = ${app.id}
     GROUP BY f.fetched_at, f.data_end`;
-  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage, appleAds };
+  const estimateHistory = await sql<{ day: Date; revenue_p10: number | null; revenue_p50: number | null;
+    revenue_p90: number | null; downloads_p10: number | null; downloads_p50: number | null; downloads_p90: number | null }[]>`
+    SELECT day, revenue_p10, revenue_p50, revenue_p90, downloads_p10, downloads_p50, downloads_p90
+    FROM app_estimates_daily WHERE app_id = ${app.id} ORDER BY day LIMIT 365`;
+  // The series of the storefront the app is refreshed in (Android: worldwide counter), oldest first.
+  const seriesCountry = app.platform === "android" ? "ww" : (app.refresh_country ?? "us").toLowerCase();
+  const metricHistory = await sql<{ day: Date; rating_count: number | null; installs_exact: number | null }[]>`
+    SELECT day, rating_count, installs_exact FROM app_metrics_daily
+    WHERE app_id = ${app.id} AND country = ${seriesCountry} ORDER BY day LIMIT 365`;
+  return { app, ranks, metrics, siblings, estimate, monetization, iaps, kpis, storePage, appleAds, estimateHistory, metricHistory };
 }
 
 export async function chartFacets() {

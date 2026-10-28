@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ParamMenu, ParamSegmented } from "@/components/url-controls";
-import { AppIcon, Card, Skeleton } from "@/components/ui";
+import { AppIcon, Card, PageHeader, Skeleton } from "@/components/ui";
 import { CHARTS, countryName, genreName } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate } from "@/lib/format";
 import { chartFacets, chartList } from "@/lib/queries";
@@ -13,14 +13,13 @@ export const metadata: Metadata = { title: "Rankings" };
 export default function ChartsPage({ searchParams }: PageProps<"/charts">) {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Rankings</h1>
-        <p className="mt-1 text-sm text-muted">
+      <PageHeader eyebrow="Rankings" title="Die Charts des" accent="App Store.">
+        <p>
           App-Store-Charts, täglich erfasst: Top Free und Top Paid aus Apples Chart-Seiten (200 Plätze), Top Grossing
           aus Apples RSS-Feed (100 Plätze). Google Play veröffentlicht keine Chart-Listen
           außerhalb seiner gesperrten internen Schnittstelle; dort messen wir stattdessen die exakten Installationen.
         </p>
-      </header>
+      </PageHeader>
       <Suspense fallback={<Card><Skeleton rows={12} /></Card>}>
         <Charts searchParams={searchParams} />
       </Suspense>
@@ -47,7 +46,7 @@ async function Charts({ searchParams }: { searchParams: PageProps<"/charts">["se
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 card p-3">
         <ParamSegmented label="Chart" name="chart" value={chart} fallback="top-free" options={Object.entries(CHARTS).map(([value, label]) => ({ value, label }))} />
         <ParamSegmented label="Gerät" name="device" value={device} fallback="iphone" options={[{ value: "iphone", label: "iPhone", icon: "iphone" }, { value: "ipad", label: "iPad", icon: "ipad" }, { value: "mac", label: "Mac", icon: "mac" }]} />
         <ParamMenu label="Land" name="country" value={country} fallback="de" icon="globe" searchable

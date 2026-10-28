@@ -48,7 +48,7 @@ export function RankBadge({ rank, entries }: { rank: number | null; entries?: nu
 
 export function Card({ title, children, aside }: { title?: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-surface">
+    <section className="card overflow-hidden">
       {title ? (
         <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">{title}</h2>
@@ -62,7 +62,7 @@ export function Card({ title, children, aside }: { title?: string; children: Rea
 
 export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-surface px-4 py-3">
+    <div className="card px-4 py-3">
       <div className="text-xs text-muted">{label}</div>
       <div className="mt-1 text-lg font-semibold tracking-tight">{value}</div>
       {hint ? <div className="mt-0.5 text-xs text-muted">{hint}</div> : null}
@@ -107,5 +107,21 @@ export function ConfidenceBadge({ confidence }: { confidence: "low" | "medium" |
     >
       {confidence === "low" ? "grob" : "früh"}
     </span>
+  );
+}
+
+/** Page head: small violet eyebrow, large title with an optional gradient accent, a short lead. */
+export function PageHeader({ eyebrow, title, accent, children }: {
+  eyebrow: string; title: string; accent?: string; children?: ReactNode;
+}) {
+  return (
+    <header className="pt-2 pb-1">
+      <div className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">{eyebrow}</div>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+        {title}
+        {accent ? <> <span className="text-gradient">{accent}</span></> : null}
+      </h1>
+      {children ? <div className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">{children}</div> : null}
+    </header>
   );
 }

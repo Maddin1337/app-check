@@ -28,7 +28,7 @@ export function Popover({ icon, label: text, active = false, align = "left", chi
         <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
-        <div className={`absolute top-11 z-30 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-lg ${
+        <div className={`absolute top-11 z-30 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-surface-2 shadow-2xl shadow-black/60 ${
           align === "right" ? "right-0" : "left-0"}`}>
           {children(() => setOpen(false))}
         </div>

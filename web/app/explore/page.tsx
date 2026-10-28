@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ExploreFilters as ExploreFiltersBar } from "@/components/explore-filters";
-import { AppIcon, Card, ConfidenceBadge, PlatformBadge, RankBadge, Skeleton, Sparkline } from "@/components/ui";
+import { AppIcon, Card, ConfidenceBadge, PageHeader, PlatformBadge, RankBadge, Skeleton, Sparkline } from "@/components/ui";
 import { LANGUAGES } from "@/lib/catalog";
 import { displayName, formatCompact, formatDate, formatEstimate, formatNumber, formatPercent, formatPrice, formatUsd } from "@/lib/format";
 import { filtersToQuery } from "@/lib/explore-params";
@@ -14,12 +14,11 @@ export const metadata: Metadata = { title: "App-Explorer" };
 export default function ExplorePage({ searchParams }: PageProps<"/explore">) {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">App-Explorer</h1>
-        <Suspense fallback={<p className="mt-1 h-5 text-sm text-muted">Lade Überblick …</p>}>
+      <PageHeader eyebrow="App-Datenbank" title="Jede App," accent="eine Suche.">
+        <Suspense fallback={<p>Lade Überblick …</p>}>
           <Overview />
         </Suspense>
-      </header>
+      </PageHeader>
       <Suspense fallback={<Card><Skeleton rows={12} /></Card>}>
         <Explorer searchParams={searchParams} />
       </Suspense>

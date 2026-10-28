@@ -77,7 +77,7 @@ export function ExploreFilters({ filters, categories, languages }: {
   ].filter(Boolean) as { key: string; text: string; clear: Partial<ExploreFilters> }[];
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+    <div className="space-y-3 card p-3">
       <div className="flex flex-wrap items-center gap-2">
         <SearchBox value={filters.q} onSearch={(q) => apply({ q })} />
         {/* Categories differ between the stores, so a platform switch drops the category filters. */}

@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 
 import { ParamMenu, ParamSegmented } from "@/components/url-controls";
 import { EVENT_LABEL, EventText } from "@/components/event-text";
-import { AppIcon, Card, PlatformBadge, Skeleton } from "@/components/ui";
+import { AppIcon, Card, PageHeader, PlatformBadge, Skeleton } from "@/components/ui";
 import { countryName } from "@/lib/catalog";
 import { displayName, formatDate, formatNumber, formatUsd } from "@/lib/format";
 import { EVENT_KINDS, feedEvents, PAGE_SIZE, parseFeedFilters, type FeedFilters } from "@/lib/queries";
@@ -14,14 +14,13 @@ export const metadata: Metadata = { title: "Feed" };
 export default function FeedPage({ searchParams }: PageProps<"/feed">) {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Feed</h1>
-        <p className="mt-1 text-sm text-muted">
+      <PageHeader eyebrow="Feed" title="Was sich" accent="heute bewegt hat.">
+        <p>
           Was sich seit der letzten Messung verändert hat: Sprünge in den Gesamtcharts (iPhone), neue Top-100-Einträge,
           auffällige Zuwächse bei Bewertungen und Installationen, Preis- und Versionswechsel. Täglich aus unseren eigenen
           Zeitreihen berechnet.
         </p>
-      </header>
+      </PageHeader>
       <Suspense fallback={<Card><Skeleton rows={12} /></Card>}>
         <Feed searchParams={searchParams} />
       </Suspense>
@@ -48,7 +47,7 @@ async function Feed({ searchParams }: { searchParams: PageProps<"/feed">["search
 
   return (
     <>
-      <nav className="flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1 text-sm">
+      <nav className="card flex flex-wrap gap-1 p-1 text-sm">
         <Chip active={!f.kind} href={href(f, { kind: "", page: 1 })}>Alle</Chip>
         {EVENT_KINDS.map((kind) => (
           <Chip key={kind} active={f.kind === kind} href={href(f, { kind, page: 1 })}>
@@ -56,7 +55,7 @@ async function Feed({ searchParams }: { searchParams: PageProps<"/feed">["search
           </Chip>
         ))}
       </nav>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 card p-3">
         <ParamSegmented label="Plattform" name="platform" value={f.platform}
           options={[{ value: "", label: "Alle", icon: "all" }, ...[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]]} />
         <ParamSegmented label="Apps" name="all" value={f.relevant ? "" : "1"}

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
-import { Card, Skeleton } from "@/components/ui";
+import { Card, PageHeader, Skeleton } from "@/components/ui";
 import { formatDate, formatNumber, formatUsd } from "@/lib/format";
 import { methodology, type AnchorRow } from "@/lib/queries";
 
@@ -11,13 +11,12 @@ export const metadata: Metadata = { title: "Methodik" };
 export default function MethodologyPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Methodik</h1>
-        <p className="mt-1 text-sm text-muted">
+      <PageHeader eyebrow="Methodik" title="Was wir messen," accent="und wie wir schätzen.">
+        <p>
           Was wir messen, was wir schätzen und wie gut die Schätzungen sind. Alle Daten stammen aus eigener Erhebung bei
           App Store und Google Play; wir übernehmen keine Zahlen anderer Datenanbieter.
         </p>
-      </header>
+      </PageHeader>
 
       <div className="grid gap-5 md:grid-cols-2">
         <Card title="Gemessen">

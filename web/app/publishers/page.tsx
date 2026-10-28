@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { ParamMenu, ParamSegmented } from "@/components/url-controls";
-import { AppIcon, Card, Skeleton } from "@/components/ui";
+import { AppIcon, Card, PageHeader, Skeleton } from "@/components/ui";
 import { displayName, formatCompact, formatEstimate, formatNumber, formatUsd } from "@/lib/format";
 import { PAGE_SIZE, publisherCategories, publisherRanking } from "@/lib/queries";
 
@@ -12,13 +12,12 @@ export const metadata: Metadata = { title: "Publisher" };
 export default function PublishersPage({ searchParams }: PageProps<"/publishers">) {
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Publisher</h1>
-        <p className="mt-1 text-sm text-muted">
+      <PageHeader eyebrow="Publisher" title="Wer in einer Nische" accent="verdient.">
+        <p>
           Studios und Entwickler nach geschätztem Monatsumsatz ihrer Apps (Summe der Modell-Mediane, brutto). iOS: nur
           US App Store, Android: weltweit. Gezählt werden nur Apps mit Schätzung; Werbeeinnahmen fehlen.
         </p>
-      </header>
+      </PageHeader>
       <Suspense fallback={<Card><Skeleton rows={12} /></Card>}>
         <Publishers searchParams={searchParams} />
       </Suspense>
@@ -49,7 +48,7 @@ async function Publishers({ searchParams }: { searchParams: PageProps<"/publishe
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 card p-3">
         <ParamSegmented label="Plattform" name="platform" value={platform} fallback="ios" reset={["category"]}
           options={[{ value: "ios", label: "App Store", icon: "ios" }, { value: "android", label: "Google Play", icon: "android" }]} />
         <ParamMenu label="Kategorie" name="category" value={category} searchable
